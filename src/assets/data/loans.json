@@ -1,0 +1,236 @@
+[
+  {
+    "id": 1,
+    "loanId": "LOAN0001",
+    "userId": "SOCITY0001",
+    "userName": "Demo User",
+    "loanAmount": 12000,
+    "monthlyEMI": 1000,
+    "loanPurpose": "Emergency Medical Expenses",
+    "loanDate": "2026-06-01",
+    "status": "Active",
+    "totalMonths": 12,
+    "paidMonths": 4,
+    "remainingMonths": 8,
+    "paidAmount": 4000,
+    "pendingAmount": 8000,
+    "repaymentSchedule": [
+      {
+        "installmentNumber": 1,
+        "amount": 1000,
+        "dueDate": "2026-06-28",
+        "paidDate": "2026-06-25",
+        "status": "Paid",
+        "paymentId": "PAY0001",
+        "paymentMethod": "UPI",
+        "transactionRef": "UPI/260625/8921"
+      },
+      {
+        "installmentNumber": 2,
+        "amount": 1000,
+        "dueDate": "2026-07-28",
+        "paidDate": "2026-07-26",
+        "status": "Paid",
+        "paymentId": "PAY0002",
+        "paymentMethod": "Net Banking",
+        "transactionRef": "NB/260726/4312"
+      },
+      {
+        "installmentNumber": 3,
+        "amount": 1000,
+        "dueDate": "2026-08-28",
+        "paidDate": "2026-08-27",
+        "status": "Paid",
+        "paymentId": "PAY0003",
+        "paymentMethod": "UPI",
+        "transactionRef": "UPI/260827/9012"
+      },
+      {
+        "installmentNumber": 4,
+        "amount": 1000,
+        "dueDate": "2026-09-28",
+        "paidDate": "2026-09-20",
+        "status": "Paid",
+        "paymentId": "PAY0004",
+        "paymentMethod": "Society Balance",
+        "transactionRef": "SOC/260920/1189"
+      },
+      {
+        "installmentNumber": 5,
+        "amount": 1000,
+        "dueDate": "2026-10-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 6,
+        "amount": 1000,
+        "dueDate": "2026-11-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 7,
+        "amount": 1000,
+        "dueDate": "2026-12-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 8,
+        "amount": 1000,
+        "dueDate": "2027-01-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 9,
+        "amount": 1000,
+        "dueDate": "2027-02-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 10,
+        "amount": 1000,
+        "dueDate": "2027-03-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 11,
+        "amount": 1000,
+        "dueDate": "2027-04-28",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 12,
+        "amount": 1000,
+        "dueDate": "2027-05-28",
+        "status": "Pending"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "loanId": "LOAN0002",
+    "userId": "SOCITY0002",
+    "userName": "Rajesh Sharma",
+    "loanAmount": 60000,
+    "monthlyEMI": 5000,
+    "loanPurpose": "Home Renovation & Repair",
+    "loanDate": "2026-07-15",
+    "status": "Active",
+    "totalMonths": 12,
+    "paidMonths": 2,
+    "remainingMonths": 10,
+    "paidAmount": 10000,
+    "pendingAmount": 50000,
+    "repaymentSchedule": [
+      {
+        "installmentNumber": 1,
+        "amount": 5000,
+        "dueDate": "2026-08-15",
+        "paidDate": "2026-08-14",
+        "status": "Paid",
+        "paymentId": "PAY0005",
+        "paymentMethod": "UPI",
+        "transactionRef": "UPI/260814/5521"
+      },
+      {
+        "installmentNumber": 2,
+        "amount": 5000,
+        "dueDate": "2026-09-15",
+        "paidDate": "2026-09-12",
+        "status": "Paid",
+        "paymentId": "PAY0006",
+        "paymentMethod": "Net Banking",
+        "transactionRef": "NB/260912/7719"
+      },
+      {
+        "installmentNumber": 3,
+        "amount": 5000,
+        "dueDate": "2026-10-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 4,
+        "amount": 5000,
+        "dueDate": "2026-11-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 5,
+        "amount": 5000,
+        "dueDate": "2026-12-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 6,
+        "amount": 5000,
+        "dueDate": "2027-01-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 7,
+        "amount": 5000,
+        "dueDate": "2027-02-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 8,
+        "amount": 5000,
+        "dueDate": "2027-03-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 9,
+        "amount": 5000,
+        "dueDate": "2027-04-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 10,
+        "amount": 5000,
+        "dueDate": "2027-05-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 11,
+        "amount": 5000,
+        "dueDate": "2027-06-15",
+        "status": "Pending"
+      },
+      {
+        "installmentNumber": 12,
+        "amount": 5000,
+        "dueDate": "2027-07-15",
+        "status": "Pending"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "loanId": "LOAN0003",
+    "userId": "SOCITY0003",
+    "userName": "Priya Patel",
+    "loanAmount": 24000,
+    "monthlyEMI": 2000,
+    "loanPurpose": "Higher Education Course",
+    "loanDate": "2025-09-01",
+    "status": "Completed",
+    "totalMonths": 12,
+    "paidMonths": 12,
+    "remainingMonths": 0,
+    "paidAmount": 24000,
+    "pendingAmount": 0,
+    "repaymentSchedule": [
+      { "installmentNumber": 1, "amount": 2000, "dueDate": "2025-10-01", "paidDate": "2025-09-30", "status": "Paid", "paymentId": "PAY0007", "paymentMethod": "UPI", "transactionRef": "UPI/250930/1001" },
+      { "installmentNumber": 2, "amount": 2000, "dueDate": "2025-11-01", "paidDate": "2025-10-31", "status": "Paid", "paymentId": "PAY0008", "paymentMethod": "UPI", "transactionRef": "UPI/251031/1002" },
+      { "installmentNumber": 3, "amount": 2000, "dueDate": "2025-12-01", "paidDate": "2025-11-29", "status": "Paid", "paymentId": "PAY0009", "paymentMethod": "UPI", "transactionRef": "UPI/251129/1003" },
+      { "installmentNumber": 4, "amount": 2000, "dueDate": "2026-01-01", "paidDate": "2025-12-30", "status": "Paid", "paymentId": "PAY0010", "paymentMethod": "UPI", "transactionRef": "UPI/251230/1004" },
+      { "installmentNumber": 5, "amount": 2000, "dueDate": "2026-02-01", "paidDate": "2026-01-30", "status": "Paid", "paymentId": "PAY0011", "paymentMethod": "UPI", "transactionRef": "UPI/260130/1005" },
+      { "installmentNumber": 6, "amount": 2000, "dueDate": "2026-03-01", "paidDate": "2026-02-28", "status": "Paid", "paymentId": "PAY0012", "paymentMethod": "UPI", "transactionRef": "UPI/260228/1006" },
+      { "installmentNumber": 7, "amount": 2000, "dueDate": "2026-04-01", "paidDate": "2026-03-31", "status": "Paid", "paymentId": "PAY0013", "paymentMethod": "UPI", "transactionRef": "UPI/260331/1007" },
+      { "installmentNumber": 8, "amount": 2000, "dueDate": "2026-05-01", "paidDate": "2026-04-30", "status": "Paid", "paymentId": "PAY0014", "paymentMethod": "UPI", "transactionRef": "UPI/260430/1008" },
+      { "installmentNumber": 9, "amount": 2000, "dueDate": "2026-06-01", "paidDate": "2026-05-31", "status": "Paid", "paymentId": "PAY0015", "paymentMethod": "UPI", "transactionRef": "UPI/260531/1009" },
+      { "installmentNumber": 10, "amount": 2000, "dueDate": "2026-07-01", "paidDate": "2026-06-30", "status": "Paid", "paymentId": "PAY0016", "paymentMethod": "UPI", "transactionRef": "UPI/260630/1010" },
+      { "installmentNumber": 11, "amount": 2000, "dueDate": "2026-08-01", "paidDate": "2026-07-31", "status": "Paid", "paymentId": "PAY0017", "paymentMethod": "UPI", "transactionRef": "UPI/260731/1011" },
+      { "installmentNumber": 12, "amount": 2000, "dueDate": "2026-09-01", "paidDate": "2026-08-31", "status": "Paid", "paymentId": "PAY0018", "paymentMethod": "UPI", "transactionRef": "UPI/260831/1012" }
+    ]
+  }
+]

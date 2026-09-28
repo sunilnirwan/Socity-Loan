@@ -1,0 +1,67 @@
+[
+  {
+    "id": 1,
+    "type": "taken_loan",
+    "title": "New Loan Taken",
+    "message": "SOCITY0001 (Demo User) has taken a loan of ₹12,000 for Emergency Medical Expenses",
+    "userId": "SOCITY0001",
+    "userName": "Demo User",
+    "loanId": "LOAN0001",
+    "amount": 12000,
+    "isRead": true,
+    "createdAt": "2026-06-01",
+    "link": "/admin/loans/LOAN0001"
+  },
+  {
+    "id": 2,
+    "type": "installment_paid",
+    "title": "Loan Installment Paid",
+    "message": "SOCITY0001 paid EMI installment 4/12 (₹1,000) for LOAN0001",
+    "userId": "SOCITY0001",
+    "userName": "Demo User",
+    "loanId": "LOAN0001",
+    "amount": 1000,
+    "isRead": false,
+    "createdAt": "2026-09-20",
+    "link": "/admin/loans/LOAN0001"
+  },
+  {
+    "id": 3,
+    "type": "taken_loan",
+    "title": "New Loan Taken",
+    "message": "SOCITY0002 (Rajesh Sharma) has taken a loan of ₹60,000 for Home Renovation & Repair",
+    "userId": "SOCITY0002",
+    "userName": "Rajesh Sharma",
+    "loanId": "LOAN0002",
+    "amount": 60000,
+    "isRead": true,
+    "createdAt": "2026-07-15",
+    "link": "/admin/loans/LOAN0002"
+  },
+  {
+    "id": 4,
+    "type": "installment_paid",
+    "title": "Loan Installment Paid",
+    "message": "SOCITY0002 paid EMI installment 2/12 (₹5,000) for LOAN0002",
+    "userId": "SOCITY0002",
+    "userName": "Rajesh Sharma",
+    "loanId": "LOAN0002",
+    "amount": 5000,
+    "isRead": false,
+    "createdAt": "2026-09-12",
+    "link": "/admin/loans/LOAN0002"
+  },
+  {
+    "id": 5,
+    "type": "loan_completed",
+    "title": "🎉 Loan Fully Completed",
+    "message": "SOCITY0003 (Priya Patel) has completed all 12 installments for LOAN0003 (₹24,000)",
+    "userId": "SOCITY0003",
+    "userName": "Priya Patel",
+    "loanId": "LOAN0003",
+    "amount": 24000,
+    "isRead": false,
+    "createdAt": "2026-08-31",
+    "link": "/admin/loans/LOAN0003"
+  }
+]

@@ -1,0 +1,67 @@
+[
+  {
+    "id": 1,
+    "userId": "SOCITY0001",
+    "name": "Demo User",
+    "mobile": "9876543210",
+    "email": "user@gmail.com",
+    "password": "user@123",
+    "totalAmount": 25000,
+    "createdAt": "2026-08-01",
+    "status": "Active",
+    "address": "Flat 302, Palm Heights, Jaipur",
+    "occupation": "Software Engineer"
+  },
+  {
+    "id": 2,
+    "userId": "SOCITY0002",
+    "name": "Rajesh Sharma",
+    "mobile": "9812345678",
+    "email": "rajesh.sharma@gmail.com",
+    "password": "user@123",
+    "totalAmount": 40000,
+    "createdAt": "2026-08-10",
+    "status": "Active",
+    "address": "Villa 14, Royal Greens, Jaipur",
+    "occupation": "Business Consultant"
+  },
+  {
+    "id": 3,
+    "userId": "SOCITY0003",
+    "name": "Priya Patel",
+    "mobile": "9823456789",
+    "email": "priya.patel@gmail.com",
+    "password": "user@123",
+    "totalAmount": 15000,
+    "createdAt": "2026-08-15",
+    "status": "Active",
+    "address": "B-404, Sunrise Apartments, Jaipur",
+    "occupation": "Architect"
+  },
+  {
+    "id": 4,
+    "userId": "SOCITY0004",
+    "name": "Amit Kumar",
+    "mobile": "9834567890",
+    "email": "amit.kumar@gmail.com",
+    "password": "user@123",
+    "totalAmount": 30000,
+    "createdAt": "2026-08-20",
+    "status": "Active",
+    "address": "House 58, Civil Lines, Jaipur",
+    "occupation": "Chartered Accountant"
+  },
+  {
+    "id": 5,
+    "userId": "SOCITY0005",
+    "name": "Sneha Verma",
+    "mobile": "9845678901",
+    "email": "sneha.verma@gmail.com",
+    "password": "user@123",
+    "totalAmount": 15000,
+    "createdAt": "2026-08-25",
+    "status": "Active",
+    "address": "C-12, Vaishali Nagar, Jaipur",
+    "occupation": "Teacher"
+  }
+]
