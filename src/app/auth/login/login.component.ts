@@ -136,42 +136,6 @@ import { ToastService } from '../../core/services/toast.service';
             </button>
           </form>
 
-          <!-- Quick Autofill Demo Credentials -->
-          <div class="demo-credentials-box">
-            <div class="demo-header">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-              <span>Quick Demo Credentials</span>
-            </div>
-            <div class="demo-btn-group" *ngIf="loginType() === 'admin'">
-              <button
-                type="button"
-                class="demo-chip-btn"
-                (click)="fillCredentials('sunilnirwan55@gmail.com', 'sunil@1234')"
-              >
-                <span><b>Admin:</b> sunilnirwan55&#64;gmail.com / sunil&#64;1234</span>
-                <span class="chip-action">Fill & Login</span>
-              </button>
-            </div>
-            <div class="demo-btn-group" *ngIf="loginType() === 'user'">
-              <button
-                type="button"
-                class="demo-chip-btn"
-                (click)="fillCredentials('user@gmail.com', 'user@123')"
-              >
-                <span><b>User 1:</b> user&#64;gmail.com (SOCITY0001)</span>
-                <span class="chip-action">Fill & Login</span>
-              </button>
-              <button
-                type="button"
-                class="demo-chip-btn"
-                (click)="fillCredentials('rajesh.sharma@gmail.com', 'user@123')"
-              >
-                <span><b>User 2:</b> rajesh.sharma&#64;gmail.com (SOCITY0002)</span>
-                <span class="chip-action">Fill & Login</span>
-              </button>
-            </div>
-          </div>
-
           <!-- Register Link -->
           <div class="auth-footer" *ngIf="loginType() === 'user'">
             <p>
@@ -426,54 +390,6 @@ import { ToastService } from '../../core/services/toast.service';
       to { transform: rotate(360deg); }
     }
 
-    .demo-credentials-box {
-      margin-top: 24px;
-      padding: 14px;
-      background: #F8FAFC;
-      border: 1px dashed #CBD5E1;
-      border-radius: 12px;
-    }
-    .demo-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.76rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      color: #64748B;
-      letter-spacing: 0.05em;
-      margin-bottom: 8px;
-    }
-    .demo-btn-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .demo-chip-btn {
-      background: #ffffff;
-      border: 1px solid #E2E8F0;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 0.78rem;
-      color: #334155;
-      text-align: left;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: all 0.15s;
-    }
-    .demo-chip-btn:hover {
-      border-color: #3155C8;
-      background: #EEF2FF;
-      color: #3155C8;
-    }
-    .chip-action {
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: #3155C8;
-    }
-
     .auth-footer {
       margin-top: 20px;
       text-align: center;
@@ -515,14 +431,6 @@ export class LoginComponent {
     this.loginType.set(type);
     this.errorMessage.set('');
     this.loginForm.reset();
-  }
-
-  fillCredentials(id: string, pass: string): void {
-    this.loginForm.patchValue({
-      identifier: id,
-      password: pass
-    });
-    this.onSubmit();
   }
 
   async onSubmit(): Promise<void> {
