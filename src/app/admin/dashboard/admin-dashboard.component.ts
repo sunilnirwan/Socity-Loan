@@ -68,6 +68,17 @@ import { combineLatest, map } from 'rxjs';
           <svg icon xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
         </app-stat-card>
 
+        <!-- Total Interest -->
+        <app-stat-card
+          title="Total Interest"
+          [value]="stats.totalInterest"
+          [isCurrency]="true"
+          colorScheme="success"
+          subtitle="Interest on all approved loans"
+        >
+          <svg icon xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+        </app-stat-card>
+
         <!-- 4. Active Loans -->
         <app-stat-card
           title="Active Loans"
@@ -503,6 +514,10 @@ export class AdminDashboardComponent {
       const completedLoansCount = loans.filter(l => (l.status || '').toLowerCase() === 'completed').length;
       const totalPaidAmount = loans.reduce((sum, l) => sum + (l.paidAmount || 0), 0);
       const totalPendingAmount = loans.reduce((sum, l) => sum + (l.pendingAmount || 0), 0);
+      // Approved loans only; paid + pending (not totalPayable) so interest waived on early closure isn't counted
+      const totalInterest = loans
+        .filter(l => ['active', 'completed'].includes((l.status || '').toLowerCase()))
+        .reduce((sum, l) => sum + Math.max(0, (l.paidAmount || 0) + (l.pendingAmount || 0) - (l.loanAmount || 0)), 0);
 
       const recoveryPercentage = totalLoanAmount > 0
         ? Math.round((totalPaidAmount / totalLoanAmount) * 100)
@@ -516,6 +531,7 @@ export class AdminDashboardComponent {
         completedLoansCount,
         totalPaidAmount,
         totalPendingAmount,
+        totalInterest,
         recoveryPercentage,
         recentLoans: loans.slice(0, 5),
         recentTxns: txns.slice(0, 5)

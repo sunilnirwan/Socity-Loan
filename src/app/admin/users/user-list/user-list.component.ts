@@ -8,7 +8,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { PaymentService } from '../../../core/services/payment.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ConfirmDialogService } from '../../../core/services/confirm-dialog.service';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { UserSummary, User } from '../../../core/models/user.model';
 import { MONTHLY_DEPOSIT, LATE_FEE, DUE_DAY, depositFor } from '../../../core/models/loan.model';
 import { InrCurrencyPipe } from '../../../shared/pipes/inr-currency.pipe';
@@ -68,9 +68,9 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
             class="search-input"
             placeholder="Search by User ID, Name, Mobile, or Email..."
             [ngModel]="searchQuery()"
-            (ngModelChange)="searchQuery.set($event)"
+            (ngModelChange)="searchQuery.set($event); currentPage.set(1)"
           />
-          <button *ngIf="searchQuery()" class="btn-clear" (click)="searchQuery.set('')">✕</button>
+          <button *ngIf="searchQuery()" class="btn-clear" (click)="searchQuery.set(''); currentPage.set(1)">✕</button>
         </div>
 
         <!-- Filter Tabs -->
@@ -78,38 +78,47 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
           <button
             class="filter-pill"
             [class.active]="selectedFilter() === 'ALL'"
-            (click)="selectedFilter.set('ALL')"
+            (click)="selectedFilter.set('ALL'); currentPage.set(1)"
           >
             All Members
           </button>
           <button
             class="filter-pill"
             [class.active]="selectedFilter() === 'LOAN_ACTIVE'"
-            (click)="selectedFilter.set('LOAN_ACTIVE')"
+            (click)="selectedFilter.set('LOAN_ACTIVE'); currentPage.set(1)"
           >
             Active Loans
           </button>
           <button
             class="filter-pill"
             [class.active]="selectedFilter() === 'LOAN_TAKEN'"
-            (click)="selectedFilter.set('LOAN_TAKEN')"
+            (click)="selectedFilter.set('LOAN_TAKEN'); currentPage.set(1)"
           >
             Loan Taken
           </button>
           <button
             class="filter-pill"
             [class.active]="selectedFilter() === 'NO_LOAN'"
-            (click)="selectedFilter.set('NO_LOAN')"
+            (click)="selectedFilter.set('NO_LOAN'); currentPage.set(1)"
           >
             No Loans
           </button>
           <button
             class="filter-pill"
             [class.active]="selectedFilter() === 'LOAN_COMPLETED'"
-            (click)="selectedFilter.set('LOAN_COMPLETED')"
+            (click)="selectedFilter.set('LOAN_COMPLETED'); currentPage.set(1)"
           >
             Completed Loans
           </button>
+        </div>
+      </div>
+
+      <!-- Bulk selection bar -->
+      <div class="bulk-bar" *ngIf="selected().size > 0">
+        <span><b>{{ selected().size }}</b> member(s) selected</span>
+        <div class="header-actions">
+          <button class="btn btn-secondary" (click)="clearSelection()">Clear</button>
+          <button class="btn btn-primary" (click)="openBulkKistModal()">+ Add Kist to Selected</button>
         </div>
       </div>
 
@@ -120,6 +129,11 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
           <table class="user-table">
             <thead>
               <tr>
+                <th class="col-check">
+                  <input type="checkbox" class="row-check" title="Select all on this page"
+                    [checked]="allSelected(getPaginatedUsers(users))"
+                    (change)="toggleAll(getPaginatedUsers(users), $any($event.target).checked)" />
+                </th>
                 <th>#</th>
                 <th>Date</th>
                 <th>Member Name</th>
@@ -133,7 +147,10 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let item of getPaginatedUsers(users); let i = index">
+              <tr *ngFor="let item of getPaginatedUsers(users); let i = index" [class.row-selected]="selected().has(item.user.userId)">
+                <td class="col-check">
+                  <input type="checkbox" class="row-check" [checked]="selected().has(item.user.userId)" (change)="toggleSelect(item.user)" />
+                </td>
                 <td class="text-muted">{{ (currentPage() - 1) * pageSize() + i + 1 }}</td>
                 <td>
                   <span class="date-cell">{{ item.user.createdAt | date:'dd/MM/yyyy' }}</span>
@@ -183,6 +200,7 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
           <div *ngFor="let item of getPaginatedUsers(users)" class="mobile-user-card">
             <div class="m-card-header">
               <div class="m-user-main">
+                <input type="checkbox" class="row-check" [checked]="selected().has(item.user.userId)" (change)="toggleSelect(item.user)" />
                 <span class="user-id-badge">{{ item.user.userId }}</span>
                 <span class="u-name-mobile">{{ item.user.name }} <span class="shares-badge" *ngIf="(item.user.shares || 1) > 1">{{ item.user.shares }} shares</span></span>
               </div>
@@ -384,6 +402,67 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
       </div>
 
       <!-- ============================================ -->
+      <!-- MODAL: BULK ADD KIST TO SELECTED USERS       -->
+      <!-- ============================================ -->
+      <div class="modal-backdrop" *ngIf="isBulkKistModalOpen()" (click)="!isSubmitting() && isBulkKistModalOpen.set(false)">
+        <div class="modal-dialog" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">Add Monthly Kist</h3>
+              <p class="modal-subtitle">Credit kist to {{ selected().size }} selected member(s)</p>
+            </div>
+            <button class="btn-close" (click)="isBulkKistModalOpen.set(false)" [disabled]="isSubmitting()">✕</button>
+          </div>
+
+          <form [formGroup]="bulkKistForm" (ngSubmit)="submitBulkKist()" class="modal-form">
+            <div class="modal-user-summary bulk-list">
+              <div class="user-summary-row" *ngFor="let u of selectedList()">
+                <span>{{ u.name }} <span class="text-muted">({{ u.userId }})</span></span>
+                <span class="val font-bold">{{ (bulkKistForm.get('amount')?.value || 0) * (u.shares || 1) | inrCurrency }}</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="bulk-amt">Kist per Share (₹) <span class="required">*</span></label>
+              <div class="input-with-symbol">
+                <span class="currency-symbol">₹</span>
+                <input id="bulk-amt" type="number" min="1" class="form-control" formControlName="amount" />
+              </div>
+              <small class="shares-hint">Members with multiple shares get amount × shares.</small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="bulk-desc">Description <span class="required">*</span></label>
+              <input id="bulk-desc" type="text" class="form-control" formControlName="description" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="bulk-date">Transaction Date</label>
+              <input id="bulk-date" type="date" class="form-control" formControlName="date" />
+            </div>
+
+            <label class="late-fee-check">
+              <input type="checkbox" formControlName="lateFee" />
+              <span>Late payment (after {{ dueDay }}th): add ₹{{ lateFee }} late fee</span>
+            </label>
+
+            <div class="balance-preview-box">
+              <span>Total to be credited:</span>
+              <b>{{ bulkTotal() | inrCurrency }}</b>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" (click)="isBulkKistModalOpen.set(false)" [disabled]="isSubmitting()">Cancel</button>
+              <button type="submit" class="btn btn-primary" [disabled]="bulkKistForm.invalid || isSubmitting()">
+                <span *ngIf="isSubmitting()" class="btn-spinner"></span>
+                {{ isSubmitting() ? bulkProgress() : 'Add Kist to ' + selected().size + ' Member(s)' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ============================================ -->
       <!-- MODAL: REGISTER NEW USER DIRECTLY            -->
       <!-- ============================================ -->
       <div class="modal-backdrop" *ngIf="isAddUserModalOpen()" (click)="!isSubmitting() && closeAddUserModal()">
@@ -453,6 +532,16 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
       animation: btn-spin 0.7s linear infinite;
     }
     @keyframes btn-spin { to { transform: rotate(360deg); } }
+    .bulk-bar {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+      background: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 14px; padding: 12px 20px;
+      color: #3155C8; font-size: 0.9rem; position: sticky; top: 0; z-index: 10;
+    }
+    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .col-check { width: 36px; }
+    .row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #3155C8; }
+    .user-table tr.row-selected { background: #F5F7FF; }
+    .bulk-list { max-height: 180px; overflow-y: auto; }
     .page-container {
       display: flex;
       flex-direction: column;
@@ -1087,9 +1176,11 @@ export class UserListComponent {
 
   filteredUsers$: Observable<UserSummary[]> = combineLatest([
     this.userService.getUsers$(),
-    this.loanService.getLoans$()
+    this.loanService.getLoans$(),
+    toObservable(this.searchQuery),
+    toObservable(this.selectedFilter)
   ]).pipe(
-    map(([allUsers, loans]) => {
+    map(([allUsers, loans, search, filter]) => {
       // Exclude admin accounts
       const members = allUsers.filter(u => u.role !== 'admin');
 
@@ -1122,16 +1213,15 @@ export class UserListComponent {
         };
       });
 
-      const q = this.searchQuery().toLowerCase().trim();
-      const filter = this.selectedFilter();
+      const q = search.toLowerCase().trim();
 
       return summaries.filter(item => {
         // Search match
         const matchesQuery = !q ||
           item.user.userId.toLowerCase().includes(q) ||
           item.user.name.toLowerCase().includes(q) ||
-          item.user.mobile.includes(q) ||
-          item.user.email.toLowerCase().includes(q);
+          (item.user.mobile || '').includes(q) ||
+          (item.user.email || '').toLowerCase().includes(q);
 
         if (!matchesQuery) return false;
 
@@ -1219,6 +1309,84 @@ export class UserListComponent {
       this.isSubmitting.set(false);
       this.toast.error(err.message || 'Operation failed', 'Error');
     }
+  }
+
+  // --- Multi-select + Bulk Kist ---
+  selected = signal<Map<string, User>>(new Map());
+  selectedList = () => [...this.selected().values()];
+  isBulkKistModalOpen = signal<boolean>(false);
+
+  bulkKistForm: FormGroup = this.fb.group({
+    amount: [MONTHLY_DEPOSIT, [Validators.required, Validators.min(1)]],
+    description: ['Monthly kist', [Validators.required]],
+    date: [new Date().toISOString().split('T')[0], [Validators.required]],
+    lateFee: [false]
+  });
+
+  toggleSelect(user: User): void {
+    const next = new Map(this.selected());
+    next.has(user.userId) ? next.delete(user.userId) : next.set(user.userId, user);
+    this.selected.set(next);
+  }
+
+  allSelected(items: UserSummary[]): boolean {
+    return items.length > 0 && items.every(i => this.selected().has(i.user.userId));
+  }
+
+  toggleAll(items: UserSummary[], checked: boolean): void {
+    const next = new Map(this.selected());
+    items.forEach(i => checked ? next.set(i.user.userId, i.user) : next.delete(i.user.userId));
+    this.selected.set(next);
+  }
+
+  clearSelection(): void {
+    this.selected.set(new Map());
+  }
+
+  bulkTotal(): number {
+    const perShare = Number(this.bulkKistForm.get('amount')?.value) || 0;
+    return this.selectedList().reduce((sum, u) => sum + perShare * Math.max(1, u.shares || 1), 0);
+  }
+
+  openBulkKistModal(): void {
+    this.bulkKistForm.reset({
+      amount: MONTHLY_DEPOSIT,
+      description: 'Monthly kist',
+      date: new Date().toISOString().split('T')[0],
+      lateFee: false
+    });
+    this.isBulkKistModalOpen.set(true);
+  }
+
+  async submitBulkKist(): Promise<void> {
+    if (this.bulkKistForm.invalid || this.isSubmitting()) return;
+    const val = this.bulkKistForm.value;
+    const users = this.selectedList();
+    const failed: string[] = [];
+
+    this.isSubmitting.set(true);
+    for (const [i, u] of users.entries()) {
+      this.bulkProgress.set(`Saving ${i + 1}/${users.length}...`);
+      try {
+        const res = await this.userService.addAmount(
+          u.userId, Number(val.amount) * Math.max(1, u.shares || 1), val.description, val.date, !!val.lateFee
+        );
+        if (!res.success) failed.push(`${u.name}: ${res.message}`);
+      } catch (err: any) {
+        failed.push(`${u.name}: ${err.message || 'failed'}`);
+      }
+    }
+    this.isSubmitting.set(false);
+    this.isBulkKistModalOpen.set(false);
+
+    if (failed.length) {
+      console.warn('Bulk kist failures:\n' + failed.join('\n'));
+      this.toast.error(`${failed.length} failed: ${failed.slice(0, 3).join('; ')}`, 'Bulk Kist');
+    }
+    if (users.length > failed.length) {
+      this.toast.success(`Kist credited to ${users.length - failed.length} of ${users.length} members.`, 'Bulk Kist');
+    }
+    this.clearSelection();
   }
 
   // --- Add User Modal ---
