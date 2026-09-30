@@ -25,7 +25,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
             <span>Back to All Loans</span>
           </a>
           <h1 class="page-title">{{ loan()?.loanId }}</h1>
-          <span class="badge" [ngClass]="loan()?.status === 'Completed' ? 'badge-success' : 'badge-warning'">
+          <span class="badge" [ngClass]="loan()?.status === 'Completed' ? 'badge-success' : (loan()?.status === 'Rejected' ? 'badge-danger' : (loan()?.status === 'Pending' ? 'badge-pending' : 'badge-warning'))">
             {{ loan()?.status }}
           </span>
         </div>
@@ -48,7 +48,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           </div>
           <div class="hero-stat">
             <span class="lbl">Fixed Term</span>
-            <span class="val">12 Months</span>
+            <span class="val">{{ loan()?.totalMonths }} Months</span>
           </div>
           <div class="hero-stat">
             <span class="lbl">Disbursed On</span>
@@ -56,7 +56,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           </div>
           <div class="hero-stat">
             <span class="lbl">EMIs Paid</span>
-            <span class="val text-success">{{ loan()?.paidMonths }}/12 Paid</span>
+            <span class="val text-success">{{ loan()?.paidMonths }}/{{ loan()?.totalMonths }} Paid</span>
           </div>
           <div class="hero-stat">
             <span class="lbl">Total Paid</span>
@@ -97,15 +97,15 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           </div>
         </div>
         <div class="borrower-action">
-          <a [routerLink]="['/admin/users', loan()?.userId]" class="btn btn-secondary">
+          <a [routerLink]="['/admin/users', loan()?.userUid || loan()?.userId]" class="btn btn-secondary">
             View Borrower Profile →
           </a>
         </div>
       </div>
 
-      <!-- 12-Month Schedule Section -->
+      <!-- Schedule Section -->
       <div class="schedule-section">
-        <h2 class="section-title">12-Month Repayment Schedule</h2>
+        <h2 class="section-title">Repayment Schedule</h2>
         <div class="content-card">
           <app-repayment-schedule
             [loan]="loan()!"
@@ -134,8 +134,8 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
               <tbody>
                 <tr *ngFor="let p of loanPayments()">
                   <td><span class="code-badge">{{ p.paymentId }}</span></td>
-                  <td>Month {{ p.installmentNumber }} of 12</td>
-                  <td>{{ p.paymentDate }}</td>
+                  <td>Month {{ p.installmentNumber }} of {{ loan()?.totalMonths }}</td>
+                  <td>{{ p.paymentDate | date:'dd/MM/yyyy' }}</td>
                   <td class="font-bold text-success">{{ p.amount | inrCurrency }}</td>
                   <td><span class="cat-pill">{{ p.paymentMethod }}</span></td>
                   <td><span class="ref-text">{{ p.transactionRef }}</span></td>
@@ -154,6 +154,9 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
     </div>
   `,
   styles: [`
+    .badge-danger { background: #FEE2E2; color: #DC2626; }
+    .badge-pending { background: #E0E7FF; color: #4338CA; }
+
     .page-container {
       display: flex;
       flex-direction: column;
@@ -352,12 +355,19 @@ export class LoanDetailComponent implements OnInit {
   }
 
   loadLoanData(loanId: string): void {
-    const l = this.loanService.getLoanById(loanId);
-    if (l) {
-      this.loan.set(l);
-      this.loanPayments.set(this.paymentService.getLoanPayments(l.loanId));
-      const u = this.userService.getUserById(l.userId);
-      if (u) this.borrower.set(u);
-    }
+    const cleanId = loanId.trim().toUpperCase();
+
+    this.loanService.getAllLoans$().subscribe(loans => {
+      const l = loans.find(x => x.loanId.toUpperCase() === cleanId || x.id === loanId);
+      if (l) {
+        this.loan.set(l);
+        const u = this.userService.getUserById(l.userId);
+        if (u) this.borrower.set(u);
+      }
+    });
+
+    this.paymentService.getPayments$().subscribe(payments => {
+      this.loanPayments.set(payments.filter(p => p.loanId.toUpperCase() === cleanId));
+    });
   }
 }

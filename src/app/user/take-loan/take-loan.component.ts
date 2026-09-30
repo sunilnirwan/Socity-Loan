@@ -1,9 +1,11 @@
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService, LoggedInUser } from '../../core/services/auth.service';
 import { LoanService } from '../../core/services/loan.service';
+import { depositFor } from '../../core/models/loan.model';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
 import { ToastService } from '../../core/services/toast.service';
 import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
@@ -18,7 +20,7 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
       <div class="page-header">
         <div>
           <h1 class="page-title">Apply for Society Loan</h1>
-          <p class="page-subtitle">Simple, transparent 12-month fixed installment micro-credit for society members</p>
+          <p class="page-subtitle">10-month loan at flat 10% interest, from the society's total deposit</p>
         </div>
       </div>
 
@@ -28,7 +30,7 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
         <div class="card-form">
           <div class="form-header">
             <h3 class="card-title">Loan Application Details</h3>
-            <span class="badge-fixed-term">12 Months Fixed Repayment</span>
+            <span class="badge-fixed-term">10 Months Fixed Repayment</span>
           </div>
 
           <form [formGroup]="loanForm" (ngSubmit)="onSubmit()">
@@ -36,11 +38,11 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
             <div class="member-readonly-box">
               <div class="readonly-row">
                 <span class="r-lbl">Applicant Member ID:</span>
-                <span class="r-val code-font">{{ currentUser?.userId }}</span>
+                <span class="r-val code-font">{{ currentUser()?.userId }}</span>
               </div>
               <div class="readonly-row">
                 <span class="r-lbl">Applicant Name:</span>
-                <span class="r-val font-bold">{{ currentUser?.name }}</span>
+                <span class="r-val font-bold">{{ currentUser()?.name }}</span>
               </div>
             </div>
 
@@ -59,20 +61,22 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
                   class="form-control"
                   [class.is-invalid]="f['loanAmount'].touched && f['loanAmount'].invalid"
                   formControlName="loanAmount"
-                  placeholder="e.g. 12000, 24000, 60000"
+                  placeholder="e.g. 10000, 20000"
                 />
               </div>
               <div class="invalid-feedback" *ngIf="f['loanAmount'].touched && f['loanAmount'].invalid">
                 <span *ngIf="f['loanAmount'].errors?.['required']">Loan amount is required.</span>
                 <span *ngIf="f['loanAmount'].errors?.['min']">Minimum loan amount is ₹1,000.</span>
               </div>
+              <div class="invalid-feedback" *ngIf="loanAmount() > maxLoan()">
+                Society funds are not enough. Maximum available: {{ maxLoan() | inrCurrency }}
+              </div>
 
               <!-- Quick Selection Presets -->
               <div class="amount-presets">
-                <button type="button" class="preset-btn" (click)="setPresetAmount(12000)">₹12,000 (₹1k/mo)</button>
-                <button type="button" class="preset-btn" (click)="setPresetAmount(24000)">₹24,000 (₹2k/mo)</button>
-                <button type="button" class="preset-btn" (click)="setPresetAmount(36000)">₹36,000 (₹3k/mo)</button>
-                <button type="button" class="preset-btn" (click)="setPresetAmount(60000)">₹60,000 (₹5k/mo)</button>
+                <button type="button" class="preset-btn" (click)="setPresetAmount(5000)">₹5,000 (₹550/mo)</button>
+                <button type="button" class="preset-btn" (click)="setPresetAmount(10000)">₹10,000 (₹1,100/mo)</button>
+                <button type="button" class="preset-btn" (click)="setPresetAmount(maxLoan())">Max ₹{{ maxLoan().toLocaleString('en-IN') }}</button>
               </div>
             </div>
 
@@ -119,7 +123,7 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
             <button
               type="submit"
               class="btn-submit"
-              [disabled]="loanForm.invalid || isSubmitting()"
+              [disabled]="loanForm.invalid || loanAmount() > maxLoan() || isSubmitting()"
             >
               <span *ngIf="!isSubmitting()" class="btn-text">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -133,8 +137,8 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
         <!-- Real-time Calculator & Schedule Preview Column -->
         <div class="card-preview">
           <div class="preview-header">
-            <h3 class="card-title">12-Month EMI Calculator Preview</h3>
-            <span class="badge-rule">Fixed 12 Months Term</span>
+            <h3 class="card-title">10-Month EMI Calculator Preview</h3>
+            <span class="badge-rule">10 Months · 10% Interest</span>
           </div>
 
           <!-- Calculated Highlights -->
@@ -145,18 +149,22 @@ import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
             </div>
             <div class="calc-divider"></div>
             <div class="calc-row highlight">
-              <span class="calc-lbl">Monthly EMI (Months 1 to 12)</span>
+              <span class="calc-lbl">Loan EMI (Months 1 to 10)</span>
               <span class="calc-val emi-big">{{ monthlyEmi() | inrCurrency }}/month</span>
             </div>
             <div class="calc-row">
-              <span class="calc-lbl">Total Repayable (12 EMIs)</span>
-              <span class="calc-val font-bold">{{ (loanAmount() || 0) | inrCurrency }}</span>
+              <span class="calc-lbl">Total Repayable (10 EMIs, incl. 10% interest)</span>
+              <span class="calc-val font-bold">{{ totalPayable() | inrCurrency }}</span>
+            </div>
+            <div class="calc-row">
+              <span class="calc-lbl">Monthly outgo (EMI + ₹{{ monthlyDeposit }} deposit)</span>
+              <span class="calc-val font-bold">{{ (monthlyEmi() + monthlyDeposit) | inrCurrency }}/month</span>
             </div>
           </div>
 
-          <!-- 12-Month Repayment Schedule Preview Table -->
+          <!-- Repayment Schedule Preview Table -->
           <div class="schedule-preview-table-wrap">
-            <h4 class="preview-schedule-title">Projected Repayment Schedule (12 Months)</h4>
+            <h4 class="preview-schedule-title">Projected Repayment Schedule (10 Months)</h4>
             <div class="table-scroll">
               <table class="preview-table">
                 <thead>
@@ -452,16 +460,20 @@ export class TakeLoanComponent implements OnInit {
   private toast = inject(ToastService);
   private router = inject(Router);
 
-  currentUser = this.authService.getCurrentUser();
+  currentUser = signal<LoggedInUser | null>(this.authService.getCurrentUser());
   isSubmitting = signal<boolean>(false);
 
   loanForm: FormGroup = this.fb.group({
-    loanAmount: [12000, [Validators.required, Validators.min(1000)]],
+    loanAmount: [10000, [Validators.required, Validators.min(1000)]],
     loanPurpose: ['Emergency Medical Expenses', [Validators.required]],
     loanDate: [new Date().toISOString().split('T')[0], [Validators.required]]
   });
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.authService.getCurrentUser$().subscribe(u => {
+      this.currentUser.set(u);
+    });
+  }
 
   get f() {
     return this.loanForm.controls;
@@ -469,6 +481,14 @@ export class TakeLoanComponent implements OnInit {
 
   loanAmount(): number {
     return Number(this.loanForm.get('loanAmount')?.value) || 0;
+  }
+
+  get monthlyDeposit(): number { return depositFor(this.currentUser()); }
+
+  maxLoan = toSignal(this.loanService.getAvailableFunds$(), { initialValue: 0 });
+
+  totalPayable(): number {
+    return this.loanService.calculateTotalPayable(this.loanAmount());
   }
 
   monthlyEmi(): number {
@@ -487,7 +507,8 @@ export class TakeLoanComponent implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
-    if (this.loanForm.invalid || !this.currentUser) {
+    const user = this.currentUser();
+    if (this.loanForm.invalid || !user) {
       this.loanForm.markAllAsTouched();
       return;
     }
@@ -497,8 +518,8 @@ export class TakeLoanComponent implements OnInit {
 
     const ok = await this.confirm.confirm({
       title: 'Confirm Loan Application',
-      message: `You are applying for a Society Loan of ₹${Number(val.loanAmount).toLocaleString('en-IN')}.\n\nFixed Term: 12 Months\nMonthly EMI: ₹${emi.toLocaleString('en-IN')}/month\nPurpose: ${val.loanPurpose}\n\nDo you wish to proceed?`,
-      confirmText: 'Yes, Apply Now',
+      message: `You are applying for a Society Loan of ₹${Number(val.loanAmount).toLocaleString('en-IN')}.\n\nFixed Term: 10 Months\nTotal Repayable (10% interest): ₹${this.totalPayable().toLocaleString('en-IN')}\nMonthly EMI: ₹${emi.toLocaleString('en-IN')} + ₹${this.monthlyDeposit.toLocaleString('en-IN')} deposit = ₹${(emi + this.monthlyDeposit).toLocaleString('en-IN')}/month\nPurpose: ${val.loanPurpose}\n\nDo you wish to proceed?`,
+      confirmText: 'Yes, Send for Approval',
       cancelText: 'Cancel',
       type: 'primary'
     });
@@ -507,9 +528,11 @@ export class TakeLoanComponent implements OnInit {
 
     this.isSubmitting.set(true);
 
-    setTimeout(() => {
-      const res = this.loanService.createLoan({
-        userId: this.currentUser!.userId,
+    try {
+      const res = await this.loanService.createLoan({
+        userId: user.userId,
+        userUid: user.uid,
+        userName: user.name,
         loanAmount: Number(val.loanAmount),
         loanPurpose: val.loanPurpose,
         loanDate: val.loanDate
@@ -518,11 +541,14 @@ export class TakeLoanComponent implements OnInit {
       this.isSubmitting.set(false);
 
       if (res.success) {
-        this.toast.success(res.message, 'Loan Created Successfully');
+        this.toast.success(res.message, 'Sent for Approval');
         this.router.navigate(['/user/loans']);
       } else {
         this.toast.error(res.message, 'Loan Request Failed');
       }
-    }, 400);
+    } catch (err: any) {
+      this.isSubmitting.set(false);
+      this.toast.error(err.message || 'Loan creation failed', 'Error');
+    }
   }
 }

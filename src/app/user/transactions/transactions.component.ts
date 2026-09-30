@@ -7,7 +7,7 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { Transaction } from '../../core/models/transaction.model';
 import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { Observable, map } from 'rxjs';
+import { Observable, map, switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-user-transactions',
@@ -151,11 +151,14 @@ export class UserTransactionsComponent {
   private authService = inject(AuthService);
   private txnService = inject(TransactionService);
 
-  currentUser = this.authService.getCurrentUser();
   selectedType = signal<'ALL' | 'credit' | 'debit'>('ALL');
   totalCount = signal<number>(0);
 
-  filteredTxns$: Observable<Transaction[]> = this.txnService.getUserTransactions$(this.currentUser?.userId || '').pipe(
+  filteredTxns$: Observable<Transaction[]> = this.authService.getCurrentUser$().pipe(
+    switchMap(u => {
+      if (!u) return of([]);
+      return this.txnService.getUserTransactions$(u.userId);
+    }),
     map(txns => {
       this.totalCount.set(txns.length);
       const type = this.selectedType();

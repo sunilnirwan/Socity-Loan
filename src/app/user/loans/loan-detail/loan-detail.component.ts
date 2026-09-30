@@ -23,7 +23,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
             <span>Back to My Loans</span>
           </a>
           <h1 class="page-title">{{ loan()?.loanId }}</h1>
-          <span class="badge" [ngClass]="loan()?.status === 'Completed' ? 'badge-success' : 'badge-warning'">
+          <span class="badge" [ngClass]="loan()?.status === 'Completed' ? 'badge-success' : (loan()?.status === 'Rejected' ? 'badge-danger' : (loan()?.status === 'Pending' ? 'badge-pending' : 'badge-warning'))">
             {{ loan()?.status }}
           </span>
         </div>
@@ -45,16 +45,16 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 
         <div class="hero-grid">
           <div class="hero-stat">
-            <span class="lbl">Monthly EMI (12 Mo)</span>
+            <span class="lbl">Monthly EMI ({{ loan()?.totalMonths }} Mo)</span>
             <span class="val font-bold">{{ (loan()?.monthlyEMI || 0) | inrCurrency }}/mo</span>
           </div>
           <div class="hero-stat">
             <span class="lbl">Repayment Term</span>
-            <span class="val">12 Months (Fixed)</span>
+            <span class="val">{{ loan()?.totalMonths }} Months (Fixed)</span>
           </div>
           <div class="hero-stat">
             <span class="lbl">EMIs Paid</span>
-            <span class="val text-success">{{ loan()?.paidMonths }}/12 Paid</span>
+            <span class="val text-success">{{ loan()?.paidMonths }}/{{ loan()?.totalMonths }} Paid</span>
           </div>
           <div class="hero-stat">
             <span class="lbl">Paid Amount</span>
@@ -67,9 +67,9 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
         </div>
       </div>
 
-      <!-- 12-Month Schedule Section -->
+      <!-- Schedule Section -->
       <div class="schedule-section">
-        <h2 class="section-title">Complete 12-Month Repayment Schedule</h2>
+        <h2 class="section-title">Complete Repayment Schedule</h2>
         <div class="content-card">
           <app-repayment-schedule
             [loan]="loan()!"
@@ -98,7 +98,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
               <tbody>
                 <tr *ngFor="let p of payments()">
                   <td><span class="code-badge">{{ p.paymentId }}</span></td>
-                  <td>Month {{ p.installmentNumber }}/12</td>
+                  <td>Month {{ p.installmentNumber }}/{{ loan()?.totalMonths }}</td>
                   <td>{{ p.paymentDate }}</td>
                   <td class="font-bold text-success">{{ p.amount | inrCurrency }}</td>
                   <td><span class="cat-pill">{{ p.paymentMethod }}</span></td>
@@ -118,6 +118,9 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
     </div>
   `,
   styles: [`
+    .badge-danger { background: #FEE2E2; color: #DC2626; }
+    .badge-pending { background: #E0E7FF; color: #4338CA; }
+
     .page-container { display: flex; flex-direction: column; gap: 24px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .header-left { display: flex; align-items: center; gap: 12px; }
@@ -180,11 +183,17 @@ export class UserLoanDetailComponent implements OnInit {
     this.route.paramMap.subscribe((params: ParamMap) => {
       const id = params.get('id');
       if (id) {
-        const l = this.loanService.getLoanById(id);
-        if (l) {
-          this.loan.set(l);
-          this.payments.set(this.paymentService.getLoanPayments(l.loanId));
-        }
+        const cleanId = id.trim().toUpperCase();
+        this.loanService.getAllLoans$().subscribe(loans => {
+          const l = loans.find(x => x.loanId.toUpperCase() === cleanId || x.id === id);
+          if (l) {
+            this.loan.set(l);
+          }
+        });
+
+        this.paymentService.getPayments$().subscribe(payments => {
+          this.payments.set(payments.filter(p => p.loanId.toUpperCase() === cleanId));
+        });
       }
     });
   }

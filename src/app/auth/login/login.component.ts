@@ -525,7 +525,7 @@ export class LoginComponent {
     this.onSubmit();
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.loginForm.invalid) {
       this.loginForm.markAllAsTouched();
       return;
@@ -536,14 +536,19 @@ export class LoginComponent {
 
     const { identifier, password } = this.loginForm.value;
 
-    setTimeout(() => {
-      const res = this.authService.login(this.loginType(), identifier, password);
+    try {
+      const res = await this.authService.login(this.loginType(), identifier, password);
       this.isLoading.set(false);
 
       if (!res.success) {
         this.errorMessage.set(res.message);
         this.toast.error(res.message, 'Login Failed');
       }
-    }, 300);
+    } catch (err: any) {
+      this.isLoading.set(false);
+      const msg = err.message || 'Authentication error. Please try again.';
+      this.errorMessage.set(msg);
+      this.toast.error(msg, 'Login Failed');
+    }
   }
 }

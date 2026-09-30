@@ -221,23 +221,24 @@ export class UserProfileComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    const session = this.authService.getCurrentUser();
-    if (session) {
-      const live = this.userService.getUserById(session.userId);
-      if (live) {
-        this.user.set(live);
-        this.profileForm.patchValue({
-          name: live.name,
-          mobile: live.mobile,
-          email: live.email,
-          occupation: live.occupation || '',
-          address: live.address || ''
+    this.authService.getCurrentUser$().subscribe(session => {
+      if (session) {
+        this.userService.getUsers$().subscribe(users => {
+          const live = users.find(u => (session.uid && u.uid === session.uid) || u.userId.toUpperCase() === session.userId.toUpperCase()) || session;
+          this.user.set(live as User);
+          this.profileForm.patchValue({
+            name: live.name,
+            mobile: live.mobile,
+            email: live.email,
+            occupation: live.occupation || '',
+            address: live.address || ''
+          });
         });
       }
-    }
+    });
   }
 
-  saveProfile(): void {
+  async saveProfile(): Promise<void> {
     if (this.profileForm.invalid || !this.user()) return;
 
     this.isSaving.set(true);
@@ -249,16 +250,19 @@ export class UserProfileComponent implements OnInit {
       address: val.address
     };
 
-    if (val.password && val.password.trim().length >= 6) {
-      updates.password = val.password.trim();
-    }
-
-    setTimeout(() => {
-      this.userService.updateUser(this.user()!.userId, updates);
-      this.authService.updateCurrentUserProfile({ name: val.name });
+    try {
+      await this.userService.updateUser(this.user()!.userId, updates);
+      await this.authService.updateCurrentUserProfile({
+        name: val.name,
+        occupation: val.occupation,
+        address: val.address
+      });
       this.user.set({ ...this.user()!, ...updates });
       this.isSaving.set(false);
       this.toast.success('Your profile details were updated successfully!', 'Profile Saved');
-    }, 300);
+    } catch (err: any) {
+      this.isSaving.set(false);
+      this.toast.error(err.message || 'Failed to update profile.', 'Error');
+    }
   }
 }

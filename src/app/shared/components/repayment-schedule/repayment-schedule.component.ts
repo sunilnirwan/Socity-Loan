@@ -16,12 +16,12 @@ import { InrCurrencyPipe } from '../../pipes/inr-currency.pipe';
           <span class="val highlight">{{ loan.loanAmount | inrCurrency }}</span>
         </div>
         <div class="summary-item">
-          <span class="label">Monthly EMI (12 Mo)</span>
+          <span class="label">Monthly EMI ({{ loan.totalMonths }} Mo)</span>
           <span class="val">{{ loan.monthlyEMI | inrCurrency }}/mo</span>
         </div>
         <div class="summary-item">
           <span class="label">Paid Progress</span>
-          <span class="val text-success">{{ loan.paidMonths }}/12 Paid ({{ loan.paidAmount | inrCurrency }})</span>
+          <span class="val text-success">{{ loan.paidMonths }}/{{ loan.totalMonths }} Paid ({{ loan.paidAmount | inrCurrency }})</span>
         </div>
         <div class="summary-item">
           <span class="label">Remaining Balance</span>
@@ -34,18 +34,18 @@ import { InrCurrencyPipe } from '../../pipes/inr-currency.pipe';
         <div class="progress-bar-bg">
           <div
             class="progress-bar-fill"
-            [style.width.%]="(loan.paidMonths / 12) * 100"
-            [class.completed]="loan.paidMonths === 12"
+            [style.width.%]="(loan.paidMonths / loan.totalMonths) * 100"
+            [class.completed]="loan.paidMonths === loan.totalMonths"
           ></div>
         </div>
         <div class="progress-labels">
           <span>Started: {{ loan.loanDate }}</span>
-          <span><b>{{ ((loan.paidMonths / 12) * 100).toFixed(0) }}%</b> Completed</span>
-          <span>Fixed Term: 12 Months</span>
+          <span><b>{{ ((loan.paidMonths / loan.totalMonths) * 100).toFixed(0) }}%</b> Completed</span>
+          <span>Fixed Term: {{ loan.totalMonths }} Months</span>
         </div>
       </div>
 
-      <!-- 12-Month Grid / Table -->
+      <!-- Schedule Grid / Table -->
       <div class="table-responsive">
         <table class="schedule-table">
           <thead>
@@ -75,7 +75,7 @@ import { InrCurrencyPipe } from '../../pipes/inr-currency.pipe';
                 <span class="emi-amount">{{ inst.amount | inrCurrency }}</span>
               </td>
               <td>
-                <span class="due-date">{{ inst.dueDate }}</span>
+                <span class="due-date">{{ inst.dueDate | date:'dd/MM/yyyy' }}</span>
               </td>
               <td>
                 <span *ngIf="inst.paidDate" class="paid-date">{{ inst.paidDate }}</span>
@@ -332,8 +332,11 @@ export class RepaymentScheduleComponent {
   @Output() payInstallment = new EventEmitter<RepaymentInstallment>();
 
   isNextPayable(inst: RepaymentInstallment): boolean {
-    if (!this.loan || this.loan.status === 'Completed') return false;
-    const nextPending = this.loan.repaymentSchedule.find(i => i.status === 'Pending');
-    return nextPending?.installmentNumber === inst.installmentNumber;
+    if (!this.loan || (this.loan.status || '').toLowerCase() === 'completed') return false;
+    const schedule = this.loan.repaymentSchedule || [];
+    const nextPending = schedule.find(i => (i.status || '').toLowerCase() === 'pending');
+    const targetNo = inst.installmentNumber || inst.installmentNo;
+    const nextNo = nextPending?.installmentNumber || nextPending?.installmentNo;
+    return nextNo === targetNo;
   }
 }

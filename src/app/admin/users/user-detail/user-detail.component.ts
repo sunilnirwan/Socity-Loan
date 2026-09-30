@@ -1,4 +1,5 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { map, switchMap, distinctUntilChanged } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule, ParamMap } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,7 +8,7 @@ import { LoanService } from '../../../core/services/loan.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { User } from '../../../core/models/user.model';
-import { Loan } from '../../../core/models/loan.model';
+import { Loan, MONTHLY_DEPOSIT, LATE_FEE, DUE_DAY, DEPOSIT_START, depositFor } from '../../../core/models/loan.model';
 import { Transaction } from '../../../core/models/transaction.model';
 import { InrCurrencyPipe } from '../../../shared/pipes/inr-currency.pipe';
 import { RepaymentScheduleComponent } from '../../../shared/components/repayment-schedule/repayment-schedule.component';
@@ -30,6 +31,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           <span class="user-id-badge">{{ user()?.userId }}</span>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary" (click)="openEdit()">Edit Member</button>
           <button class="btn btn-primary" (click)="isAddAmountOpen.set(true)">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span>Add Amount / Credit</span>
@@ -60,6 +62,15 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           <div class="meta-item">
             <span class="meta-label">Joined Date</span>
             <span class="meta-val">{{ user()?.createdAt }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Shares (deposit {{ monthlyDeposit | inrCurrency }}/mo)</span>
+            <span class="shares-edit">
+              <input type="number" min="1" max="20" class="shares-input" [value]="sharesInput()" (input)="sharesInput.set(+$any($event.target).value)" />
+              <button class="btn-save-shares" [disabled]="savingShares() || sharesInput() === (user()?.shares || 1)" (click)="saveShares()">
+                {{ savingShares() ? 'Saving...' : 'Save' }}
+              </button>
+            </span>
           </div>
           <div class="meta-item">
             <span class="meta-label">Account Status</span>
@@ -108,6 +119,13 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
         >
           Transaction History ({{ userTxns().length }})
         </button>
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === 'DEPOSITS'"
+          (click)="activeTab.set('DEPOSITS')"
+        >
+          3-Year Deposits ({{ paidDepositMonths() }}/36)
+        </button>
       </div>
 
       <!-- Tab 1: Member Loans -->
@@ -133,7 +151,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
               </div>
             </div>
 
-            <!-- 12-Month Schedule Component Embedded -->
+            <!-- Schedule Component Embedded -->
             <app-repayment-schedule [loan]="loan" [showPayAction]="false"></app-repayment-schedule>
           </div>
         </div>
@@ -157,7 +175,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
               <tbody>
                 <tr *ngFor="let txn of userTxns()">
                   <td><span class="code-badge">{{ txn.transactionId }}</span></td>
-                  <td>{{ txn.date }}</td>
+                  <td>{{ txn.date | date:'dd/MM/yyyy' }}</td>
                   <td><span class="cat-pill">{{ txn.category }}</span></td>
                   <td>{{ txn.description }}</td>
                   <td>
@@ -177,6 +195,40 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
             title="No transactions yet"
             description="Transactions will appear here when balance top-ups, loans, or repayments occur."
           ></app-empty-state>
+        </div>
+      </div>
+
+      <!-- Tab 3: 36-month deposit tracker -->
+      <div class="tab-content" *ngIf="activeTab() === 'DEPOSITS'">
+        <div class="content-card">
+          <div class="table-responsive">
+            <table class="simple-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Due Date</th>
+                  <th>Deposit Date(s)</th>
+                  <th class="text-right">Due</th>
+                  <th class="text-right">Deposited</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let m of depositMonths()">
+                  <td>{{ m.no }}</td>
+                  <td class="font-bold">{{ dueDay }} {{ m.label }}</td>
+                  <td>{{ m.dates.join(', ') || '—' }}</td>
+                  <td class="text-right">{{ monthlyDeposit | inrCurrency }}</td>
+                  <td class="text-right font-bold" [class.text-success]="m.amount > 0">{{ m.amount | inrCurrency }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="m.amount >= monthlyDeposit ? 'badge-success' : (m.future ? 'badge-muted' : 'badge-danger')">
+                      {{ m.amount >= monthlyDeposit ? 'Paid' : (m.future ? 'Upcoming' : 'Pending') }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -203,6 +255,10 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
               <label class="form-label">Date</label>
               <input type="date" class="form-control" formControlName="date" />
             </div>
+            <label class="late-fee-check">
+              <input type="checkbox" formControlName="lateFee" />
+              <span>Late payment (after {{ dueDay }}th): add ₹{{ lateFee }} late fee</span>
+            </label>
             <div class="modal-actions">
               <button type="button" class="btn btn-secondary" (click)="isAddAmountOpen.set(false)">Cancel</button>
               <button type="submit" class="btn btn-primary" [disabled]="addAmountForm.invalid">Add Amount</button>
@@ -210,9 +266,52 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
           </form>
         </div>
       </div>
+
+      <!-- Edit Member Modal -->
+      <div class="modal-backdrop" *ngIf="isEditOpen()" (click)="isEditOpen.set(false)">
+        <div class="modal-dialog" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">Edit {{ user()?.name }}</h3>
+              <p class="modal-subtitle">Login email ({{ user()?.email }}) cannot be changed here</p>
+            </div>
+            <button class="btn-close" (click)="isEditOpen.set(false)">✕</button>
+          </div>
+          <form [formGroup]="editForm" (ngSubmit)="submitEdit()" class="modal-form">
+            <div class="form-group">
+              <label class="form-label">Full Name <span class="required">*</span></label>
+              <input type="text" class="form-control" formControlName="name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mobile Number</label>
+              <input type="tel" maxlength="10" class="form-control" formControlName="mobile" placeholder="9876543210" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Occupation</label>
+              <input type="text" class="form-control" formControlName="occupation" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Address</label>
+              <input type="text" class="form-control" formControlName="address" />
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" (click)="isEditOpen.set(false)">Cancel</button>
+              <button type="submit" class="btn btn-primary" [disabled]="editForm.invalid || savingEdit()">
+                {{ savingEdit() ? 'Saving...' : 'Save Changes' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   `,
   styles: [`
+    .shares-edit { display: inline-flex; gap: 6px; align-items: center; }
+    .shares-input { width: 64px; padding: 4px 8px; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: 700; }
+    .btn-save-shares { padding: 4px 10px; border-radius: 6px; border: none; background: #3155C8; color: #fff; font-weight: 600; font-size: 0.8rem; cursor: pointer; }
+    .btn-save-shares:disabled { opacity: 0.5; cursor: not-allowed; }
+    .late-fee-check { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #B45309; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+    .late-fee-check input { width: 16px; height: 16px; accent-color: #B45309; }
     .page-container {
       display: flex;
       flex-direction: column;
@@ -404,6 +503,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
       padding: 20px;
     }
     .table-responsive { overflow-x: auto; }
+    .badge-muted { background: #F1F5F9; color: #64748B; }
     .simple-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
     .simple-table th { background: #F8FAFC; padding: 12px; text-align: left; color: #64748B; font-weight: 600; border-bottom: 1px solid #E2E8F0; }
     .simple-table td { padding: 12px; border-bottom: 1px solid #F1F5F9; color: #1E293B; vertical-align: middle; }
@@ -467,15 +567,93 @@ export class UserDetailComponent implements OnInit {
   user = signal<User | null>(null);
   userLoans = signal<Loan[]>([]);
   userTxns = signal<Transaction[]>([]);
-  activeTab = signal<'LOANS' | 'TXNS'>('LOANS');
+  activeTab = signal<'LOANS' | 'TXNS' | 'DEPOSITS'>('LOANS');
+  get monthlyDeposit(): number { return depositFor(this.user()); }
+  sharesInput = signal<number>(1);
+  savingShares = signal<boolean>(false);
+
+  async saveShares(): Promise<void> {
+    const u = this.user();
+    if (!u) return;
+    this.savingShares.set(true);
+    const res = await this.userService.updateShares(u, this.sharesInput());
+    this.savingShares.set(false);
+    res.success ? this.toast.success(res.message, 'Shares Updated') : this.toast.error(res.message, 'Update Failed');
+  }
+
+  /** Society deposit plan: 36 months from DEPOSIT_START (Jan 2025 – Dec 2027); credits grouped by calendar month. */
+  depositMonths = computed(() => {
+    const [startYear, startMonth] = DEPOSIT_START.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, 1);
+    const nowKey = new Date().toISOString().slice(0, 7);
+    const credits = this.userTxns().filter(t => t.type === 'credit' && t.date);
+    return Array.from({ length: 36 }, (_, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const inMonth = credits.filter(t => t.date!.startsWith(key));
+      return {
+        no: i + 1,
+        label: d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+        dates: inMonth.map(t => t.date!),
+        amount: inMonth.reduce((sum, t) => sum + (t.amount || 0), 0),
+        future: key > nowKey
+      };
+    });
+  });
+  paidDepositMonths = computed(() => this.depositMonths().filter(m => m.amount >= depositFor(this.user())).length);
 
   isAddAmountOpen = signal<boolean>(false);
 
   addAmountForm: FormGroup = this.fb.group({
-    amount: [5000, [Validators.required, Validators.min(1)]],
+    amount: [MONTHLY_DEPOSIT, [Validators.required, Validators.min(1)]],
     description: ['Monthly savings contribution', [Validators.required]],
-    date: [new Date().toISOString().split('T')[0], [Validators.required]]
+    date: [new Date().toISOString().split('T')[0], [Validators.required]],
+    lateFee: [false]
   });
+  lateFee = LATE_FEE;
+  dueDay = DUE_DAY;
+
+  isEditOpen = signal<boolean>(false);
+  savingEdit = signal<boolean>(false);
+  editForm: FormGroup = this.fb.group({
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    mobile: ['', [Validators.pattern(/^\d{10}$/)]],
+    occupation: [''],
+    address: ['']
+  });
+
+  openEdit(): void {
+    const u = this.user();
+    if (!u) return;
+    this.editForm.reset({ name: u.name, mobile: u.mobile, occupation: u.occupation || '', address: u.address || '' });
+    this.isEditOpen.set(true);
+  }
+
+  async submitEdit(): Promise<void> {
+    const u = this.user();
+    if (!u || this.editForm.invalid) return;
+    const val = this.editForm.value;
+    const mobile = (val.mobile || '').trim();
+    const taken = mobile && this.userService.getUserByMobile(mobile);
+    if (taken && taken.uid !== u.uid) {
+      this.toast.error(`Mobile ${mobile} already belongs to ${taken.name} (${taken.userId}).`, 'Update Failed');
+      return;
+    }
+    this.savingEdit.set(true);
+    const ok = await this.userService.updateUser(u.uid || u.userId, {
+      name: val.name.trim(),
+      mobile,
+      occupation: val.occupation.trim(),
+      address: val.address.trim()
+    });
+    this.savingEdit.set(false);
+    if (ok) {
+      this.isEditOpen.set(false);
+      this.toast.success(`${val.name} updated.`, 'Member Updated');
+    } else {
+      this.toast.error('Could not save changes.', 'Update Failed');
+    }
+  }
 
   ngOnInit(): void {
     this.route.paramMap.subscribe((params: ParamMap) => {
@@ -487,12 +665,33 @@ export class UserDetailComponent implements OnInit {
   }
 
   loadUserData(userId: string): void {
-    const u = this.userService.getUserById(userId);
-    if (u) {
-      this.user.set(u);
-      this.userLoans.set(this.loanService.getUserLoans(u.userId));
-      this.userTxns.set(this.txnService.getUserTransactions(u.userId));
-    }
+    // Observe user reactively
+    this.userService.getUsers$().subscribe(users => {
+      const clean = userId.trim().toUpperCase();
+      const u = users.find(x => x.userId.toUpperCase() === clean || x.uid === userId);
+      if (u) {
+        const first = !this.user();
+        this.user.set(u);
+        this.sharesInput.set(u.shares || 1);
+        if (first && this.route.snapshot.queryParamMap.has('edit')) this.openEdit();
+        if (!this.isAddAmountOpen()) this.addAmountForm.patchValue({ amount: depositFor(u) });
+      }
+    });
+
+    // Loans & transactions are matched by the member's Firebase UID (unique), not the Member ID
+    const member$ = this.userService.getUsers$().pipe(
+      map(users => users.find(x => x.userId.toUpperCase() === userId.trim().toUpperCase() || x.uid === userId)),
+      map(u => u?.uid || userId),
+      distinctUntilChanged()
+    );
+
+    member$.pipe(switchMap(key => this.loanService.getUserLoans$(key))).subscribe(loans => {
+      this.userLoans.set(loans);
+    });
+
+    member$.pipe(switchMap(key => this.txnService.getUserTransactions$(key))).subscribe(txns => {
+      this.userTxns.set(txns);
+    });
   }
 
   totalLoansAmount(): number {
@@ -508,25 +707,30 @@ export class UserDetailComponent implements OnInit {
   }
 
   activeLoansCount(): number {
-    return this.userLoans().filter(l => l.status === 'Active').length;
+    return this.userLoans().filter(l => (l.status || '').toLowerCase() === 'active').length;
   }
 
-  submitAddAmount(): void {
+  async submitAddAmount(): Promise<void> {
     if (this.addAmountForm.invalid || !this.user()) return;
     const val = this.addAmountForm.value;
-    const res = this.userService.addAmount(
-      this.user()!.userId,
-      Number(val.amount),
-      val.description,
-      val.date
-    );
+    try {
+      const res = await this.userService.addAmount(
+        this.user()!.userId,
+        Number(val.amount),
+        val.description,
+        val.date,
+        !!val.lateFee
+      );
 
-    this.isAddAmountOpen.set(false);
-    if (res.success) {
-      this.toast.success(res.message, 'Balance Updated');
-      this.loadUserData(this.user()!.userId);
-    } else {
-      this.toast.error(res.message, 'Failed');
+      this.isAddAmountOpen.set(false);
+      this.addAmountForm.patchValue({ lateFee: false });
+      if (res.success) {
+        this.toast.success(res.message, 'Balance Updated');
+      } else {
+        this.toast.error(res.message, 'Failed');
+      }
+    } catch (err: any) {
+      this.toast.error(err.message || 'Operation failed', 'Error');
     }
   }
 }

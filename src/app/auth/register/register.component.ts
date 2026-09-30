@@ -498,7 +498,7 @@ export class RegisterComponent implements OnInit {
     this.nextUserId.set(this.userService.generateNextUserId());
   }
 
-  onSubmit(): void {
+  async onSubmit(): Promise<void> {
     if (this.registerForm.invalid) {
       this.registerForm.markAllAsTouched();
       return;
@@ -509,8 +509,8 @@ export class RegisterComponent implements OnInit {
 
     const val = this.registerForm.value;
 
-    setTimeout(() => {
-      const result = this.userService.registerUser({
+    try {
+      const result = await this.userService.registerUser({
         name: val.name,
         mobile: val.mobile,
         email: val.email,
@@ -529,6 +529,11 @@ export class RegisterComponent implements OnInit {
 
       this.toast.success(`Account created with ID: ${result.user?.userId}! Please log in.`, 'Registration Successful');
       this.router.navigate(['/login']);
-    }, 400);
+    } catch (err: any) {
+      this.isLoading.set(false);
+      const msg = err.message || 'Registration failed. Please try again.';
+      this.errorMessage.set(msg);
+      this.toast.error(msg, 'Registration Error');
+    }
   }
 }

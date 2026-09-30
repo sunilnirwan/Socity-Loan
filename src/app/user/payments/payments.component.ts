@@ -7,11 +7,12 @@ import { LoanService } from '../../core/services/loan.service';
 import { PaymentService } from '../../core/services/payment.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ConfirmDialogService } from '../../core/services/confirm-dialog.service';
-import { Loan, RepaymentInstallment } from '../../core/models/loan.model';
+import { Loan, RepaymentInstallment, depositFor } from '../../core/models/loan.model';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { Payment } from '../../core/models/payment.model';
 import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { combineLatest, map } from 'rxjs';
+import { combineLatest, map, switchMap, of } from 'rxjs';
 
 @Component({
   selector: 'app-user-payments',
@@ -23,7 +24,7 @@ import { combineLatest, map } from 'rxjs';
       <div class="page-header">
         <div>
           <h1 class="page-title">Loan Installment Payments</h1>
-          <p class="page-subtitle">Pay your monthly EMIs, track 12-month repayment schedules, and view payment receipts</p>
+          <p class="page-subtitle">Pay your monthly EMIs, track 10-month repayment schedules, and view payment receipts</p>
         </div>
       </div>
 
@@ -44,7 +45,7 @@ import { combineLatest, map } from 'rxjs';
             <div class="next-installment-box" *ngIf="getNextPendingInstallment(loan) as nextInst">
               <div class="inst-row">
                 <span class="inst-lbl">Installment:</span>
-                <span class="inst-val">Month {{ nextInst.installmentNumber }} of 12</span>
+                <span class="inst-val">Month {{ nextInst.installmentNumber }} of {{ loan.totalMonths }}</span>
               </div>
               <div class="inst-row">
                 <span class="inst-lbl">Due Date:</span>
@@ -52,21 +53,27 @@ import { combineLatest, map } from 'rxjs';
               </div>
               <div class="inst-row emi-row">
                 <span class="inst-lbl">Amount Due:</span>
-                <span class="inst-val emi-amount">{{ nextInst.amount | inrCurrency }}</span>
+                <span class="inst-val emi-amount">{{ (nextInst.amount + monthlyDeposit) | inrCurrency }}</span>
+              </div>
+              <div class="inst-row">
+                <span class="inst-lbl">Breakdown:</span>
+                <span class="inst-val">{{ nextInst.amount | inrCurrency }} EMI + {{ monthlyDeposit | inrCurrency }} deposit</span>
               </div>
             </div>
 
             <div class="due-footer">
               <div class="loan-progress-mini">
-                <span><b>{{ loan.paidMonths }}/12</b> Paid</span>
+                <span><b>{{ loan.paidMonths }}/{{ loan.totalMonths }}</b> Paid</span>
                 <span>Pending: <b>{{ loan.pendingAmount | inrCurrency }}</b></span>
               </div>
+              <span class="badge badge-warning" *ngIf="hasPendingRequest(loan, data.payments)">⏳ Waiting for admin approval</span>
               <button
+                *ngIf="!hasPendingRequest(loan, data.payments)"
                 class="btn btn-pay-now"
                 (click)="openPaymentModal(loan, getNextPendingInstallment(loan))"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                <span>Pay Month {{ (loan.paidMonths + 1) }} Installment ({{ loan.monthlyEMI | inrCurrency }})</span>
+                <span>Pay Month {{ (loan.paidMonths + 1) }} Installment ({{ ((getNextPendingInstallment(loan)?.amount || 0) + monthlyDeposit) | inrCurrency }})</span>
               </button>
             </div>
           </div>
@@ -112,13 +119,13 @@ import { combineLatest, map } from 'rxjs';
                     <a [routerLink]="['/user/loans', p.loanId]" class="loan-link">{{ p.loanId }}</a>
                   </td>
                   <td>
-                    <span class="pill-month">Month {{ p.installmentNumber }} of 12</span>
+                    <span class="pill-month">Month {{ p.installmentNumber }}</span>
                   </td>
                   <td><span class="date-cell">{{ p.paymentDate }}</span></td>
-                  <td class="font-bold text-success">{{ p.amount | inrCurrency }}</td>
+                  <td class="font-bold text-success">{{ (p.amount + (p.depositAmount || 0)) | inrCurrency }}</td>
                   <td><span class="cat-pill">{{ p.paymentMethod }}</span></td>
                   <td><span class="ref-text">{{ p.transactionRef }}</span></td>
-                  <td><span class="badge badge-success">Success</span></td>
+                  <td><span class="badge" [ngClass]="p.status === 'Pending' ? 'badge-warning' : (p.status === 'Rejected' ? 'badge-danger' : 'badge-success')">{{ p.status === 'Pending' ? 'Awaiting Approval' : (p.status || 'Success') }}</span></td>
                 </tr>
               </tbody>
             </table>
@@ -154,15 +161,15 @@ import { combineLatest, map } from 'rxjs';
               </div>
               <div class="p-row">
                 <span class="p-lbl">Installment:</span>
-                <span class="p-val">Month {{ activeModalInstallment()?.installmentNumber }} of 12</span>
+                <span class="p-val">Month {{ activeModalInstallment()?.installmentNumber }} of {{ activeModalLoan()?.totalMonths }}</span>
               </div>
               <div class="p-row">
                 <span class="p-lbl">Due Date:</span>
                 <span class="p-val">{{ activeModalInstallment()?.dueDate }}</span>
               </div>
               <div class="p-row highlight-amt">
-                <span class="p-lbl">Total Payable EMI:</span>
-                <span class="p-val emi-huge">{{ (activeModalInstallment()?.amount || 0) | inrCurrency }}</span>
+                <span class="p-lbl">Total Payable ({{ (activeModalInstallment()?.amount || 0) | inrCurrency }} EMI + {{ monthlyDeposit | inrCurrency }} deposit):</span>
+                <span class="p-val emi-huge">{{ ((activeModalInstallment()?.amount || 0) + monthlyDeposit) | inrCurrency }}</span>
               </div>
             </div>
 
@@ -219,7 +226,7 @@ import { combineLatest, map } from 'rxjs';
             <div class="modal-actions">
               <button type="button" class="btn btn-secondary" (click)="closePaymentModal()">Cancel</button>
               <button type="submit" class="btn btn-success" [disabled]="paymentForm.invalid || isSubmitting()">
-                <span *ngIf="!isSubmitting()">Confirm & Pay {{ (activeModalInstallment()?.amount || 0) | inrCurrency }}</span>
+                <span *ngIf="!isSubmitting()">Confirm & Pay {{ ((activeModalInstallment()?.amount || 0) + monthlyDeposit) | inrCurrency }}</span>
                 <span *ngIf="isSubmitting()">Processing Payment...</span>
               </button>
             </div>
@@ -356,6 +363,8 @@ import { combineLatest, map } from 'rxjs';
     .ref-text { font-family: monospace; font-size: 0.76rem; color: #64748B; }
     .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
     .badge-success { background: #DCFCE7; color: #15803D; }
+    .badge-warning { background: #FEF3C7; color: #B45309; }
+    .badge-danger { background: #FEE2E2; color: #DC2626; }
 
     /* Modal */
     .modal-backdrop {
@@ -458,23 +467,32 @@ export class UserPaymentsComponent implements OnInit {
     notes: ['']
   });
 
-  paymentData$ = combineLatest([
-    this.loanService.getUserLoans$(this.currentUser?.userId || ''),
-    this.paymentService.getUserPayments$(this.currentUser?.userId || '')
-  ]).pipe(
-    map(([loans, payments]) => {
-      const activeLoans = loans.filter(l => l.status === 'Active' && l.pendingAmount > 0 && l.paidMonths < 12);
-      return {
-        activeLoans,
-        payments
-      };
+  paymentData$ = this.authService.getCurrentUser$().pipe(
+    switchMap(user => {
+      if (!user) return of({ activeLoans: [], payments: [] });
+      return combineLatest([
+        this.loanService.getUserLoans$(user.userId),
+        this.paymentService.getUserPayments$(user.userId)
+      ]).pipe(
+        map(([loans, payments]) => {
+          const activeLoans = loans.filter(l => (l.status || '').toLowerCase() === 'active' && l.pendingAmount > 0 && l.paidMonths < l.totalMonths);
+          return {
+            activeLoans,
+            payments
+          };
+        })
+      );
     })
   );
 
   ngOnInit(): void {}
 
+  hasPendingRequest(loan: Loan, payments: Payment[]): boolean {
+    return payments.some(p => p.loanId === loan.loanId && p.status === 'Pending');
+  }
+
   getNextPendingInstallment(loan: Loan): RepaymentInstallment | undefined {
-    return loan.repaymentSchedule.find(i => i.status === 'Pending');
+    return (loan.repaymentSchedule || []).find(i => (i.status || '').toLowerCase() === 'pending');
   }
 
   openPaymentModal(loan: Loan, installment?: RepaymentInstallment): void {
@@ -482,7 +500,7 @@ export class UserPaymentsComponent implements OnInit {
       installment = this.getNextPendingInstallment(loan);
     }
     if (!installment) {
-      this.toast.info('All 12 installments have already been paid for this loan.', 'Loan Completed');
+      this.toast.info('All installments have already been paid for this loan.', 'Loan Completed');
       return;
     }
 
@@ -491,7 +509,7 @@ export class UserPaymentsComponent implements OnInit {
     this.paymentForm.reset({
       paymentMethod: 'UPI',
       paymentDate: new Date().toISOString().split('T')[0],
-      notes: `Installment #${installment.installmentNumber}/12 for ${loan.loanId}`
+      notes: `Installment #${installment.installmentNumber || installment.installmentNo}/${loan.totalMonths} for ${loan.loanId}`
     });
     this.isPaymentModalOpen.set(true);
   }
@@ -502,16 +520,20 @@ export class UserPaymentsComponent implements OnInit {
     this.activeModalInstallment.set(null);
   }
 
+  private me = toSignal(this.authService.getCurrentUser$());
+  get monthlyDeposit(): number { return depositFor(this.me()); }
+
   async submitPayment(): Promise<void> {
     if (this.paymentForm.invalid || !this.activeModalLoan() || !this.activeModalInstallment()) return;
 
     const loan = this.activeModalLoan()!;
     const inst = this.activeModalInstallment()!;
     const val = this.paymentForm.value;
+    const instNo = inst.installmentNumber || inst.installmentNo;
 
     const ok = await this.confirm.confirm({
       title: 'Confirm Installment Payment',
-      message: `You are paying EMI Month #${inst.installmentNumber} of ₹${inst.amount.toLocaleString('en-IN')} via ${val.paymentMethod} for loan ${loan.loanId}.\n\nProceed with simulated payment?`,
+      message: `You are paying ₹${(inst.amount + this.monthlyDeposit).toLocaleString('en-IN')} (EMI Month #${instNo} ₹${inst.amount.toLocaleString('en-IN')} + ₹${this.monthlyDeposit.toLocaleString('en-IN')} deposit) via ${val.paymentMethod} for loan ${loan.loanId}.\n\nAdmin will verify and approve this payment. Proceed?`,
       confirmText: 'Yes, Pay EMI',
       cancelText: 'Cancel',
       type: 'success'
@@ -521,8 +543,8 @@ export class UserPaymentsComponent implements OnInit {
 
     this.isSubmitting.set(true);
 
-    setTimeout(() => {
-      const res = this.paymentService.makePayment({
+    try {
+      const res = await this.paymentService.requestPayment({
         loanId: loan.loanId,
         paymentMethod: val.paymentMethod,
         paymentDate: val.paymentDate,
@@ -533,10 +555,13 @@ export class UserPaymentsComponent implements OnInit {
       this.closePaymentModal();
 
       if (res.success) {
-        this.toast.success(res.message, 'Payment Successful');
+        this.toast.success(res.message, 'Sent for Approval');
       } else {
         this.toast.error(res.message, 'Payment Failed');
       }
-    }, 400);
+    } catch (err: any) {
+      this.isSubmitting.set(false);
+      this.toast.error(err.message || 'Payment processing failed', 'Error');
+    }
   }
 }

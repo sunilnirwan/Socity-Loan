@@ -9,7 +9,7 @@ import { Loan, RepaymentInstallment } from '../../../core/models/loan.model';
 import { InrCurrencyPipe } from '../../../shared/pipes/inr-currency.pipe';
 import { RepaymentScheduleComponent } from '../../../shared/components/repayment-schedule/repayment-schedule.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { Observable } from 'rxjs';
+import { Observable, switchMap, of, map } from 'rxjs';
 
 @Component({
   selector: 'app-user-loan-list',
@@ -21,7 +21,7 @@ import { Observable } from 'rxjs';
       <div class="page-header">
         <div>
           <h1 class="page-title">My Society Loans</h1>
-          <p class="page-subtitle">View your active and completed loans, 12-month schedules, and EMI payment status</p>
+          <p class="page-subtitle">View your active and completed loans, 10-month schedules, and EMI payment status</p>
         </div>
         <div class="header-actions">
           <a routerLink="/user/take-loan" class="btn btn-primary">
@@ -38,7 +38,7 @@ import { Observable } from 'rxjs';
           <div class="loan-top">
             <div class="loan-id-box">
               <span class="loan-id-code">{{ loan.loanId }}</span>
-              <span class="badge" [ngClass]="loan.status === 'Completed' ? 'badge-success' : 'badge-warning'">
+              <span class="badge" [ngClass]="loan.status === 'Completed' ? 'badge-success' : (loan.status === 'Rejected' ? 'badge-danger' : (loan.status === 'Pending' ? 'badge-pending' : 'badge-warning'))">
                 {{ loan.status }}
               </span>
             </div>
@@ -61,7 +61,7 @@ import { Observable } from 'rxjs';
               <span class="val">{{ loan.monthlyEMI | inrCurrency }}/mo</span>
             </div>
             <div class="metric-cell">
-              <span class="lbl">Paid ({{ loan.paidMonths }}/12 mo)</span>
+              <span class="lbl">Paid ({{ loan.paidMonths }}/{{ loan.totalMonths }} mo)</span>
               <span class="val text-success">{{ loan.paidAmount | inrCurrency }}</span>
             </div>
             <div class="metric-cell">
@@ -75,12 +75,12 @@ import { Observable } from 'rxjs';
             <div class="progress-bar-bg">
               <div
                 class="progress-bar-fill"
-                [style.width.%]="(loan.paidMonths / 12) * 100"
-                [class.completed]="loan.paidMonths === 12"
+                [style.width.%]="(loan.paidMonths / loan.totalMonths) * 100"
+                [class.completed]="loan.paidMonths === loan.totalMonths"
               ></div>
             </div>
             <div class="progress-info">
-              <span><b>{{ loan.paidMonths }}</b> of 12 EMIs Paid ({{ ((loan.paidMonths / 12) * 100).toFixed(0) }}%)</span>
+              <span><b>{{ loan.paidMonths }}</b> of {{ loan.totalMonths }} EMIs Paid ({{ ((loan.paidMonths / loan.totalMonths) * 100).toFixed(0) }}%)</span>
               <span><b>{{ loan.remainingMonths }}</b> Months Remaining</span>
             </div>
           </div>
@@ -89,7 +89,7 @@ import { Observable } from 'rxjs';
           <div class="loan-actions-footer">
             <button class="btn btn-secondary" (click)="openScheduleModal(loan)">
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-              <span>View 12-Month Schedule</span>
+              <span>View Repayment Schedule</span>
             </button>
             <a
               *ngIf="loan.status === 'Active'"
@@ -105,7 +105,7 @@ import { Observable } from 'rxjs';
         <app-empty-state
           *ngIf="loans.length === 0"
           title="You have no active or previous loans"
-          description="Apply for your first 12-month society micro-loan in just a few clicks!"
+          description="Apply for your first 10-month society micro-loan in just a few clicks!"
           actionText="Apply For Loan"
           (action)="applyLoan()"
         ></app-empty-state>
@@ -116,7 +116,7 @@ import { Observable } from 'rxjs';
         <div class="modal-dialog-large" (click)="$event.stopPropagation()">
           <div class="modal-header">
             <div>
-              <h3 class="modal-title">12-Month Repayment Schedule</h3>
+              <h3 class="modal-title">Repayment Schedule</h3>
               <p class="modal-subtitle">Loan <b>{{ selectedLoanForModal()?.loanId }}</b> — {{ selectedLoanForModal()?.loanPurpose }}</p>
             </div>
             <button class="btn-close" (click)="selectedLoanForModal.set(null)">✕</button>
@@ -214,6 +214,9 @@ import { Observable } from 'rxjs';
     .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
     .badge-success { background: #DCFCE7; color: #15803D; }
     .badge-warning { background: #FEF3C7; color: #B45309; }
+    .badge-danger { background: #FEE2E2; color: #DC2626; }
+    .badge-pending { background: #E0E7FF; color: #4338CA; }
+
 
     /* Modal */
     .modal-backdrop {
@@ -257,8 +260,14 @@ export class UserLoanListComponent {
   private authService = inject(AuthService);
   private loanService = inject(LoanService);
 
-  currentUser = this.authService.getCurrentUser();
-  loans$: Observable<Loan[]> = this.loanService.getUserLoans$(this.currentUser?.userId || '');
+  loans$: Observable<Loan[]> = this.authService.getCurrentUser$().pipe(
+    switchMap(user => {
+      if (!user) return of([]);
+      return this.loanService.getAllLoans$().pipe(
+        map(loans => loans.filter(l => l.userUid === user.uid || l.userId === user.userId))
+      );
+    })
+  );
 
   selectedLoanForModal = signal<Loan | null>(null);
 

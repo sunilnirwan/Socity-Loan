@@ -1,7 +1,11 @@
 import { Component, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { NotificationService } from '../../core/services/notification.service';
+import { PaymentService } from '../../core/services/payment.service';
+import { LoanService } from '../../core/services/loan.service';
+import { ToastService } from '../../core/services/toast.service';
 import { AppNotification } from '../../core/models/notification.model';
 import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
@@ -92,6 +96,32 @@ import { Observable, map } from 'rxjs';
               </div>
             </div>
 
+            <!-- Approve / reject a member's payment request -->
+            <div class="approval-box" *ngIf="n.type === 'payment_request' && n.paymentDocId" (click)="$event.stopPropagation()">
+              <ng-container *ngIf="paymentStatus(n) === 'Pending'; else doneTpl">
+                <button class="btn-approve" [disabled]="processingId() === n.paymentDocId" (click)="approve(n)">
+                  {{ processingId() === n.paymentDocId ? 'Processing...' : 'Approve' }}
+                </button>
+                <button class="btn-reject" [disabled]="processingId() === n.paymentDocId" (click)="reject(n)">Reject</button>
+              </ng-container>
+              <ng-template #doneTpl>
+                <span class="status-chip" [class.rejected]="paymentStatus(n) === 'Rejected'">{{ paymentStatus(n) === 'Rejected' ? 'Rejected' : 'Approved' }}</span>
+              </ng-template>
+            </div>
+
+            <!-- Approve / reject a member's loan application -->
+            <div class="approval-box" *ngIf="n.type === 'loan_request' && n.loanId" (click)="$event.stopPropagation()">
+              <ng-container *ngIf="loanStatus(n) === 'Pending'; else loanDoneTpl">
+                <button class="btn-approve" [disabled]="processingId() === n.loanId" (click)="approveLoan(n)">
+                  {{ processingId() === n.loanId ? 'Processing...' : 'Approve' }}
+                </button>
+                <button class="btn-reject" [disabled]="processingId() === n.loanId" (click)="rejectLoan(n)">Reject</button>
+              </ng-container>
+              <ng-template #loanDoneTpl>
+                <span class="status-chip" [class.rejected]="loanStatus(n) === 'Rejected'">{{ loanStatus(n) === 'Rejected' ? 'Rejected' : 'Approved' }}</span>
+              </ng-template>
+            </div>
+
             <!-- Action indicators -->
             <div class="notif-actions">
               <span class="unread-dot" *ngIf="!n.isRead" title="Unread"></span>
@@ -175,11 +205,66 @@ import { Observable, map } from 'rxjs';
     .unread-dot { width: 10px; height: 10px; border-radius: 50%; background: #3155C8; }
     .btn-delete { background: none; border: none; color: #94A3B8; cursor: pointer; padding: 4px; border-radius: 6px; }
     .btn-delete:hover { color: #DC2626; background: #FEE2E2; }
+    .approval-box { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+    .btn-approve, .btn-reject { padding: 7px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; border: 1px solid transparent; }
+    .btn-approve { background: #16A34A; color: #fff; }
+    .btn-reject { background: #fff; color: #DC2626; border-color: #FCA5A5; }
+    .btn-approve:disabled, .btn-reject:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status-chip { font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #DCFCE7; color: #15803D; }
+    .status-chip.rejected { background: #FEE2E2; color: #DC2626; }
   `]
 })
 export class AdminNotificationsComponent {
   private notifService = inject(NotificationService);
   private router = inject(Router);
+  private paymentService = inject(PaymentService);
+  private toast = inject(ToastService);
+
+  processingId = signal<string | null>(null);
+  private allPayments = toSignal(this.paymentService.getAllPayments$(), { initialValue: [] });
+
+  paymentStatus(n: AppNotification): string {
+    return this.allPayments().find(p => p.id === n.paymentDocId)?.status || 'Pending';
+  }
+
+  async approve(n: AppNotification): Promise<void> {
+    this.processingId.set(n.paymentDocId!);
+    const res = await this.paymentService.approvePayment(n.paymentDocId!);
+    this.processingId.set(null);
+    res.success ? this.toast.success(res.message, 'Payment Approved') : this.toast.error(res.message, 'Approval Failed');
+    if (res.success && n.id) this.notifService.markAsRead(n.id);
+  }
+
+  private loanService = inject(LoanService);
+  private allLoans = toSignal(this.loanService.getAllLoans$(), { initialValue: [] });
+
+  loanStatus(n: AppNotification): string {
+    return this.allLoans().find(l => l.loanId === n.loanId)?.status || 'Pending';
+  }
+
+  async approveLoan(n: AppNotification): Promise<void> {
+    this.processingId.set(n.loanId!);
+    const res = await this.loanService.approveLoan(n.loanId!);
+    this.processingId.set(null);
+    res.success ? this.toast.success(res.message, 'Loan Approved') : this.toast.error(res.message, 'Approval Failed');
+    if (res.success && n.id) this.notifService.markAsRead(n.id);
+  }
+
+  async rejectLoan(n: AppNotification): Promise<void> {
+    this.processingId.set(n.loanId!);
+    const res = await this.loanService.rejectLoan(n.loanId!);
+    this.processingId.set(null);
+    res.success ? this.toast.info(res.message, 'Loan Rejected') : this.toast.error(res.message, 'Reject Failed');
+    if (res.success && n.id) this.notifService.markAsRead(n.id);
+  }
+
+  async reject(n: AppNotification): Promise<void> {
+    this.processingId.set(n.paymentDocId!);
+    const res = await this.paymentService.rejectPayment(n.paymentDocId!);
+    this.processingId.set(null);
+    res.success ? this.toast.info(res.message, 'Payment Rejected') : this.toast.error(res.message, 'Reject Failed');
+    if (res.success && n.id) this.notifService.markAsRead(n.id);
+  }
 
   selectedTab = signal<'ALL' | 'UNREAD' | 'LOAN_EVENTS' | 'PAYMENT_EVENTS'>('ALL');
 
@@ -187,8 +272,8 @@ export class AdminNotificationsComponent {
     map(notifs => {
       const tab = this.selectedTab();
       if (tab === 'UNREAD') return notifs.filter(n => !n.isRead);
-      if (tab === 'LOAN_EVENTS') return notifs.filter(n => n.type === 'taken_loan' || n.type === 'loan_completed');
-      if (tab === 'PAYMENT_EVENTS') return notifs.filter(n => n.type === 'installment_paid');
+      if (tab === 'LOAN_EVENTS') return notifs.filter(n => n.type === 'taken_loan' || n.type === 'loan_completed' || n.type === 'loan_request');
+      if (tab === 'PAYMENT_EVENTS') return notifs.filter(n => n.type === 'installment_paid' || n.type === 'payment_request');
       return notifs;
     })
   );
@@ -198,7 +283,9 @@ export class AdminNotificationsComponent {
   }
 
   onNotificationClick(n: AppNotification): void {
-    this.notifService.markAsRead(n.id);
+    if (n.id) {
+      this.notifService.markAsRead(n.id);
+    }
     if (n.link) {
       this.router.navigateByUrl(n.link);
     }
@@ -206,6 +293,8 @@ export class AdminNotificationsComponent {
 
   deleteNotif(n: AppNotification, event: MouseEvent): void {
     event.stopPropagation();
-    this.notifService.deleteNotification(n.id);
+    if (n.id) {
+      this.notifService.deleteNotification(n.id);
+    }
   }
 }

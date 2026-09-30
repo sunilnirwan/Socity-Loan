@@ -1,7 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { LocalStorageService } from '../../core/services/local-storage.service';
 import { UserService } from '../../core/services/user.service';
 import { LoanService } from '../../core/services/loan.service';
 import { PaymentService } from '../../core/services/payment.service';
@@ -34,7 +33,7 @@ import { combineLatest, map } from 'rxjs';
         </div>
       </div>
 
-      <!-- 6 KPI Stat Cards -->
+      <!-- 7 KPI Stat Cards as specified in requirements -->
       <div class="stats-grid">
         <!-- 1. Total Users -->
         <app-stat-card
@@ -60,7 +59,7 @@ import { combineLatest, map } from 'rxjs';
 
         <!-- 3. Total Loans -->
         <app-stat-card
-          title="Total Loans"
+          title="Total Loan"
           [value]="stats.totalLoanAmount"
           [isCurrency]="true"
           colorScheme="purple"
@@ -75,12 +74,23 @@ import { combineLatest, map } from 'rxjs';
           [value]="stats.activeLoansCount"
           [isCurrency]="false"
           colorScheme="warning"
-          subtitle="Ongoing 12-month repayments"
+          subtitle="Ongoing 10-month repayments"
         >
           <svg icon xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </app-stat-card>
 
-        <!-- 5. Paid Amount -->
+        <!-- 5. Completed Loans -->
+        <app-stat-card
+          title="Completed Loans"
+          [value]="stats.completedLoansCount"
+          [isCurrency]="false"
+          colorScheme="success"
+          subtitle="Fully settled loans"
+        >
+          <svg icon xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        </app-stat-card>
+
+        <!-- 6. Paid Amount -->
         <app-stat-card
           title="Paid Amount"
           [value]="stats.totalPaidAmount"
@@ -91,7 +101,7 @@ import { combineLatest, map } from 'rxjs';
           <svg icon xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         </app-stat-card>
 
-        <!-- 6. Pending Amount -->
+        <!-- 7. Pending Amount -->
         <app-stat-card
           title="Pending Amount"
           [value]="stats.totalPendingAmount"
@@ -170,7 +180,7 @@ import { combineLatest, map } from 'rxjs';
                     </span>
                   </td>
                   <td>
-                    <span class="progress-text">{{ loan.paidMonths }}/12 mo</span>
+                    <span class="progress-text">{{ loan.paidMonths }}/{{ loan.totalMonths }} mo</span>
                   </td>
                 </tr>
               </tbody>
@@ -472,23 +482,25 @@ import { combineLatest, map } from 'rxjs';
   `]
 })
 export class AdminDashboardComponent {
-  private storage = inject(LocalStorageService);
   private userService = inject(UserService);
   private loanService = inject(LoanService);
   private paymentService = inject(PaymentService);
   private txnService = inject(TransactionService);
 
   stats$ = combineLatest([
-    this.storage.getUsers$(),
-    this.storage.getLoans$(),
-    this.storage.getPayments$(),
-    this.storage.getTransactions$()
+    this.userService.getUsers$(),
+    this.loanService.getLoans$(),
+    this.paymentService.getPayments$(),
+    this.txnService.getTransactions$()
   ]).pipe(
     map(([users, loans, payments, txns]) => {
-      const totalUsers = users.length;
+      // Exclude admin account from members count
+      const members = users.filter(u => u.role !== 'admin');
+      const totalUsers = members.length;
       const totalAmount = users.reduce((sum, u) => sum + (u.totalAmount || 0), 0);
       const totalLoanAmount = loans.reduce((sum, l) => sum + (l.loanAmount || 0), 0);
-      const activeLoansCount = loans.filter(l => l.status === 'Active').length;
+      const activeLoansCount = loans.filter(l => (l.status || '').toLowerCase() === 'active').length;
+      const completedLoansCount = loans.filter(l => (l.status || '').toLowerCase() === 'completed').length;
       const totalPaidAmount = loans.reduce((sum, l) => sum + (l.paidAmount || 0), 0);
       const totalPendingAmount = loans.reduce((sum, l) => sum + (l.pendingAmount || 0), 0);
 
@@ -501,6 +513,7 @@ export class AdminDashboardComponent {
         totalAmount,
         totalLoanAmount,
         activeLoansCount,
+        completedLoansCount,
         totalPaidAmount,
         totalPendingAmount,
         recoveryPercentage,

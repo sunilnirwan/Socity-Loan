@@ -112,7 +112,7 @@ import { combineLatest, map } from 'rxjs';
       <div class="active-loan-banner" *ngIf="data.activeLoan">
         <div class="active-loan-top">
           <div>
-            <div class="active-loan-badge">CURRENT ACTIVE LOAN (12 MONTHS FIXED)</div>
+            <div class="active-loan-badge">CURRENT ACTIVE LOAN ({{ data.activeLoan.totalMonths }} MONTHS FIXED)</div>
             <h3 class="active-loan-title">
               {{ data.activeLoan.loanId }} — {{ data.activeLoan.loanPurpose }}
             </h3>
@@ -126,11 +126,11 @@ import { combineLatest, map } from 'rxjs';
           <div class="progress-bar-bg">
             <div
               class="progress-bar-fill"
-              [style.width.%]="(data.activeLoan.paidMonths / 12) * 100"
+              [style.width.%]="(data.activeLoan.paidMonths / data.activeLoan.totalMonths) * 100"
             ></div>
           </div>
           <div class="progress-meta">
-            <span><b>{{ data.activeLoan.paidMonths }}</b> of 12 Months Paid</span>
+            <span><b>{{ data.activeLoan.paidMonths }}</b> of {{ data.activeLoan.totalMonths }} Months Paid</span>
             <span><b>{{ data.activeLoan.remainingMonths }}</b> Months Remaining ({{ data.activeLoan.pendingAmount | inrCurrency }})</span>
           </div>
         </div>
@@ -162,7 +162,7 @@ import { combineLatest, map } from 'rxjs';
               <tbody>
                 <tr *ngFor="let p of data.recentPayments">
                   <td><span class="code-link">{{ p.paymentId }}</span></td>
-                  <td>Month {{ p.installmentNumber }}/12</td>
+                  <td>Month {{ p.installmentNumber }}</td>
                   <td>{{ p.paymentDate }}</td>
                   <td class="font-bold text-success">{{ p.amount | inrCurrency }}</td>
                   <td><span class="badge badge-success">Success</span></td>
@@ -256,6 +256,7 @@ import { combineLatest, map } from 'rxjs';
       font-weight: 800;
       margin: 0;
       letter-spacing: -0.01em;
+      color:#fff;
     }
     .user-id-badge {
       font-family: monospace;
@@ -480,10 +481,25 @@ export class UserDashboardComponent {
     map(([sessionUser, users, allLoans, allPayments, allTxns]) => {
       if (!sessionUser) return null;
 
-      const liveUser = users.find(u => u.userId.toUpperCase() === sessionUser.userId.toUpperCase()) || sessionUser;
-      const userLoans = allLoans.filter(l => l.userId.toUpperCase() === sessionUser.userId.toUpperCase());
-      const userPayments = allPayments.filter(p => p.userId.toUpperCase() === sessionUser.userId.toUpperCase());
-      const userTxns = allTxns.filter(t => t.userId.toUpperCase() === sessionUser.userId.toUpperCase());
+      const liveUser = users.find(u =>
+        (sessionUser.uid && u.uid === sessionUser.uid) ||
+        u.userId.toUpperCase() === sessionUser.userId.toUpperCase()
+      ) || sessionUser;
+
+      const userLoans = allLoans.filter(l =>
+        l.userId.toUpperCase() === sessionUser.userId.toUpperCase() ||
+        (sessionUser.uid && l.userUid === sessionUser.uid)
+      );
+
+      const userPayments = allPayments.filter(p =>
+        p.userId.toUpperCase() === sessionUser.userId.toUpperCase() ||
+        (sessionUser.uid && p.userUid === sessionUser.uid)
+      );
+
+      const userTxns = allTxns.filter(t =>
+        t.userId.toUpperCase() === sessionUser.userId.toUpperCase() ||
+        (sessionUser.uid && t.userUid === sessionUser.uid)
+      );
 
       const totalLoanAmount = userLoans.reduce((sum, l) => sum + (l.loanAmount || 0), 0);
       const totalPaidAmount = userLoans.reduce((sum, l) => sum + (l.paidAmount || 0), 0);

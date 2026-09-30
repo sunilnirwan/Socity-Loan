@@ -1,19 +1,39 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { UserService } from '../../../core/services/user.service';
+import { LoanService } from '../../../core/services/loan.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { PaymentService } from '../../../core/services/payment.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { ConfirmDialogService } from '../../../core/services/confirm-dialog.service';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { UserSummary, User } from '../../../core/models/user.model';
+import { MONTHLY_DEPOSIT, LATE_FEE, DUE_DAY, depositFor } from '../../../core/models/loan.model';
 import { InrCurrencyPipe } from '../../../shared/pipes/inr-currency.pipe';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { Observable, combineLatest, map } from 'rxjs';
+import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-user-list',
   standalone: true,
   imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule, InrCurrencyPipe, EmptyStateComponent],
+  host: {
+    '(document:click)': 'menu.set(null)',
+    '(document:keydown.escape)': 'menu.set(null)',
+    '(window:scroll)': 'menu.set(null)',
+    '(window:resize)': 'menu.set(null)'
+  },
   template: `
+    <!-- Row Actions Dropdown (fixed so the table's overflow doesn't clip it) -->
+    <div *ngIf="menu() as m" class="action-menu" role="menu" [style.top.px]="m.top" [style.right.px]="m.right" (click)="$event.stopPropagation()">
+      <button role="menuitem" (click)="menu.set(null); openAddAmountModal(m.user)">+ Add Amount</button>
+      <button role="menuitem" (click)="menu.set(null); router.navigate(['/admin/users', m.user.uid || m.user.userId])">View Profile</button>
+      <button role="menuitem" (click)="menu.set(null); router.navigate(['/admin/users', m.user.uid || m.user.userId], { queryParams: { edit: 1 } })">Edit Member</button>
+      <button *ngIf="isAdmin()" role="menuitem" class="danger" (click)="menu.set(null); deleteMember(m.user)">Delete</button>
+    </div>
+
     <div class="page-container">
       <!-- Header -->
       <div class="page-header">
@@ -26,7 +46,16 @@ import { Observable, combineLatest, map } from 'rxjs';
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
             <span>Register New Member</span>
           </button>
+          <button class="btn btn-secondary" (click)="bulkOpen.set(!bulkOpen())">Bulk Add</button>
         </div>
+      </div>
+
+      <div class="toolbar-card" *ngIf="bulkOpen()" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <small>One member per line: <b>Name, email, shares</b> (shares optional). Password for all: 123456</small>
+        <textarea #bulkText rows="10" class="form-control" placeholder="गजानन्द, gajanand@yopmail.com, 1"></textarea>
+        <button class="btn btn-primary" [disabled]="isSubmitting()" (click)="bulkAdd(bulkText.value)">
+          {{ isSubmitting() ? bulkProgress() : 'Add All Members' }}
+        </button>
       </div>
 
       <!-- Filters & Search Toolbar -->
@@ -92,7 +121,7 @@ import { Observable, combineLatest, map } from 'rxjs';
             <thead>
               <tr>
                 <th>#</th>
-                <th>User ID</th>
+                <th>Date</th>
                 <th>Member Name</th>
                 <th>Contact</th>
                 <th>Total Amount</th>
@@ -100,7 +129,6 @@ import { Observable, combineLatest, map } from 'rxjs';
                 <th>Paid Amount</th>
                 <th>Pending Amount</th>
                 <th>Loan Status</th>
-                <th>Created Date</th>
                 <th class="text-right">Actions</th>
               </tr>
             </thead>
@@ -108,11 +136,11 @@ import { Observable, combineLatest, map } from 'rxjs';
               <tr *ngFor="let item of getPaginatedUsers(users); let i = index">
                 <td class="text-muted">{{ (currentPage() - 1) * pageSize() + i + 1 }}</td>
                 <td>
-                  <span class="user-id-badge">{{ item.user.userId }}</span>
+                  <span class="date-cell">{{ item.user.createdAt | date:'dd/MM/yyyy' }}</span>
                 </td>
                 <td>
                   <div class="user-name-cell">
-                    <span class="u-name">{{ item.user.name }}</span>
+                    <span class="u-name">{{ item.user.name }} <span class="shares-badge" *ngIf="(item.user.shares || 1) > 1">{{ item.user.shares }} shares</span></span>
                     <span class="u-occ" *ngIf="item.user.occupation">{{ item.user.occupation }}</span>
                   </div>
                 </td>
@@ -139,27 +167,11 @@ import { Observable, combineLatest, map } from 'rxjs';
                     {{ item.loanStatus }}
                   </span>
                 </td>
-                <td>
-                  <span class="date-cell">{{ item.user.createdAt }}</span>
-                </td>
+                
                 <td class="text-right">
-                  <div class="action-btn-group">
-                    <button
-                      class="btn-action btn-add-amt"
-                      (click)="openAddAmountModal(item.user)"
-                      title="Add Amount / Top-Up"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                      Add Amount
-                    </button>
-                    <a
-                      [routerLink]="['/admin/users', item.user.userId]"
-                      class="btn-action btn-view"
-                      title="View Member Profile"
-                    >
-                      View
-                    </a>
-                  </div>
+                  <button class="btn-action btn-view" (click)="toggleMenu(item.user, $event)" aria-haspopup="menu" [attr.aria-expanded]="menu()?.user === item.user">
+                    {{ deletingId() === item.user.userId ? 'Deleting...' : 'Actions ▾' }}
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -172,7 +184,7 @@ import { Observable, combineLatest, map } from 'rxjs';
             <div class="m-card-header">
               <div class="m-user-main">
                 <span class="user-id-badge">{{ item.user.userId }}</span>
-                <span class="u-name-mobile">{{ item.user.name }}</span>
+                <span class="u-name-mobile">{{ item.user.name }} <span class="shares-badge" *ngIf="(item.user.shares || 1) > 1">{{ item.user.shares }} shares</span></span>
               </div>
               <span class="badge" [ngClass]="getLoanBadgeClass(item.loanStatus)">
                 {{ item.loanStatus }}
@@ -212,11 +224,19 @@ import { Observable, combineLatest, map } from 'rxjs';
                 + Add Amount
               </button>
               <a
-                [routerLink]="['/admin/users', item.user.userId]"
+                [routerLink]="['/admin/users', item.user.uid || item.user.userId]"
                 class="btn-action btn-view flex-1 text-center"
               >
                 View Profile
               </a>
+              <button
+                *ngIf="isAdmin()"
+                class="btn-action btn-delete flex-1"
+                [disabled]="deletingId() === item.user.userId"
+                (click)="deleteMember(item.user)"
+              >
+                {{ deletingId() === item.user.userId ? 'Deleting...' : 'Delete' }}
+              </button>
             </div>
           </div>
         </div>
@@ -336,6 +356,11 @@ import { Observable, combineLatest, map } from 'rxjs';
               />
             </div>
 
+            <label class="late-fee-check">
+              <input type="checkbox" formControlName="lateFee" />
+              <span>Late payment (after {{ dueDay }}th): add ₹{{ lateFee }} late fee</span>
+            </label>
+
             <!-- New Estimated Balance Banner -->
             <div class="balance-preview-box" *ngIf="addAmountForm.get('amount')?.value > 0">
               <span>New Total Balance will be:</span>
@@ -361,14 +386,14 @@ import { Observable, combineLatest, map } from 'rxjs';
       <!-- ============================================ -->
       <!-- MODAL: REGISTER NEW USER DIRECTLY            -->
       <!-- ============================================ -->
-      <div class="modal-backdrop" *ngIf="isAddUserModalOpen()" (click)="closeAddUserModal()">
+      <div class="modal-backdrop" *ngIf="isAddUserModalOpen()" (click)="!isSubmitting() && closeAddUserModal()">
         <div class="modal-dialog" (click)="$event.stopPropagation()">
           <div class="modal-header">
             <div>
               <h3 class="modal-title">Register New Society Member</h3>
               <p class="modal-subtitle">Will auto-assign Member ID: <b>{{ nextAssignedId() }}</b></p>
             </div>
-            <button class="btn-close" (click)="closeAddUserModal()">✕</button>
+            <button class="btn-close" (click)="closeAddUserModal()" [disabled]="isSubmitting()">✕</button>
           </div>
 
           <form [formGroup]="registerUserForm" (ngSubmit)="submitRegisterUser()" class="modal-form">
@@ -399,10 +424,17 @@ import { Observable, combineLatest, map } from 'rxjs';
               </div>
             </div>
 
+            <div class="form-group">
+              <label class="form-label">Shares <span class="required">*</span></label>
+              <input type="number" min="1" max="20" step="1" class="form-control" formControlName="shares" />
+              <small class="shares-hint">Monthly deposit: {{ ((registerUserForm.get('shares')?.value || 1) * monthlyDepositPerShare) | inrCurrency }} ({{ registerUserForm.get('shares')?.value || 1 }} × {{ monthlyDepositPerShare | inrCurrency }})</small>
+            </div>
+
             <div class="modal-actions">
-              <button type="button" class="btn btn-secondary" (click)="closeAddUserModal()">Cancel</button>
-              <button type="submit" class="btn btn-primary" [disabled]="registerUserForm.invalid">
-                Register Member
+              <button type="button" class="btn btn-secondary" (click)="closeAddUserModal()" [disabled]="isSubmitting()">Cancel</button>
+              <button type="submit" class="btn btn-primary" [disabled]="registerUserForm.invalid || isSubmitting()">
+                <span *ngIf="isSubmitting()" class="btn-spinner"></span>
+                {{ isSubmitting() ? 'Registering...' : 'Register Member' }}
               </button>
             </div>
           </form>
@@ -411,6 +443,16 @@ import { Observable, combineLatest, map } from 'rxjs';
     </div>
   `,
   styles: [`
+    .shares-badge { font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #EDE9FE; color: #6D28D9; margin-left: 4px; }
+    .shares-hint { display: block; margin-top: 4px; font-size: 0.78rem; color: #64748B; }
+    .late-fee-check { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #B45309; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+    .late-fee-check input { width: 16px; height: 16px; accent-color: #B45309; }
+    .btn-spinner {
+      display: inline-block; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px;
+      border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: #fff; border-radius: 50%;
+      animation: btn-spin 0.7s linear infinite;
+    }
+    @keyframes btn-spin { to { transform: rotate(360deg); } }
     .page-container {
       display: flex;
       flex-direction: column;
@@ -622,6 +664,32 @@ import { Observable, combineLatest, map } from 'rxjs';
     .badge-completed { background: #DCFCE7; color: #15803D; }
     .badge-none { background: #F1F5F9; color: #64748B; }
 
+    .action-menu {
+      position: fixed;
+      z-index: 1000;
+      min-width: 170px;
+      background: #ffffff;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+    }
+    .action-menu button {
+      background: none;
+      border: none;
+      text-align: left;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+    }
+    .action-menu button:hover { background: #F1F5F9; }
+    .action-menu .danger { color: #DC2626; }
+    .action-menu .danger:hover { background: #FEF2F2; }
     .action-btn-group {
       display: inline-flex;
       gap: 6px;
@@ -640,6 +708,16 @@ import { Observable, combineLatest, map } from 'rxjs';
       gap: 4px;
       transition: all 0.15s;
     }
+    .btn-delete {
+      background: #FEF2F2;
+      color: #DC2626;
+      border-color: #FECACA;
+    }
+    .btn-delete:hover:not(:disabled) {
+      background: #DC2626;
+      color: #ffffff;
+    }
+    .btn-delete:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-add-amt {
       background: #EEF2FF;
       color: #3155C8;
@@ -919,15 +997,64 @@ import { Observable, combineLatest, map } from 'rxjs';
 })
 export class UserListComponent {
   private userService = inject(UserService);
+  private loanService = inject(LoanService);
   private toast = inject(ToastService);
   private fb = inject(FormBuilder);
+  private paymentService = inject(PaymentService);
+  private confirm = inject(ConfirmDialogService);
+  private role = toSignal(inject(AuthService).getUserRole$());
+
+  isAdmin = () => this.role() === 'admin';
+  deletingId = signal<string | null>(null);
+  router = inject(Router);
+  menu = signal<{ user: User; top: number; right: number } | null>(null);
+
+  toggleMenu(user: User, event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.menu()?.user === user) {
+      this.menu.set(null);
+      return;
+    }
+    const r = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    // Open upward when too close to the bottom of the screen
+    const top = r.bottom + 190 > window.innerHeight ? r.top - 190 : r.bottom + 4;
+    this.menu.set({ user, top, right: window.innerWidth - r.right });
+  }
+
+  async deleteMember(user: User): Promise<void> {
+    const hasActiveLoan = this.loanService.getUserLoans(user.uid || user.userId).some(l => l.status === 'Active' || l.status === 'Pending');
+    if (hasActiveLoan) {
+      this.toast.error(`${user.name} has an active or pending loan. Close or reject it before deleting the member.`, 'Cannot Delete');
+      return;
+    }
+    const hasPendingPayment = (await firstValueFrom(this.paymentService.getAllPayments$()))
+      .some(p => (user.uid ? p.userUid === user.uid : p.userId === user.userId) && p.status === 'Pending');
+    if (hasPendingPayment) {
+      this.toast.error(`${user.name} has a payment waiting for approval. Approve or reject it first.`, 'Cannot Delete');
+      return;
+    }
+
+    const ok = await this.confirm.confirm({
+      title: 'Delete Member',
+      message: `Delete ${user.name} (${user.userId})?\n\nDeposit balance: ₹${(user.totalAmount || 0).toLocaleString('en-IN')}\nThe member will no longer be able to log in. Their loan and transaction history is kept.\n\nThis cannot be undone.`,
+      confirmText: 'Yes, Delete',
+      cancelText: 'Cancel',
+      type: 'danger'
+    });
+    if (!ok) return;
+
+    this.deletingId.set(user.userId);
+    const res = await this.userService.deleteUser(user);
+    this.deletingId.set(null);
+    res.success ? this.toast.success(res.message, 'Member Deleted') : this.toast.error(res.message, 'Delete Failed');
+  }
 
   Math = Math;
 
   searchQuery = signal<string>('');
   selectedFilter = signal<'ALL' | 'LOAN_ACTIVE' | 'LOAN_TAKEN' | 'NO_LOAN' | 'LOAN_COMPLETED'>('ALL');
   currentPage = signal<number>(1);
-  pageSize = signal<number>(10);
+  pageSize = signal<number>(100);
 
   // Add Amount Modal State
   isAddAmountModalOpen = signal<boolean>(false);
@@ -936,13 +1063,16 @@ export class UserListComponent {
 
   // Add User Modal State
   isAddUserModalOpen = signal<boolean>(false);
-  nextAssignedId = signal<string>('');
+  nextAssignedId = signal<string>('SOCITY0001');
 
   addAmountForm: FormGroup = this.fb.group({
-    amount: [5000, [Validators.required, Validators.min(1)]],
+    amount: [MONTHLY_DEPOSIT, [Validators.required, Validators.min(1)]],
     description: ['Monthly contribution / deposit', [Validators.required]],
-    date: [new Date().toISOString().split('T')[0], [Validators.required]]
+    date: [new Date().toISOString().split('T')[0], [Validators.required]],
+    lateFee: [false]
   });
+  lateFee = LATE_FEE;
+  dueDay = DUE_DAY;
 
   registerUserForm: FormGroup = this.fb.group({
     name: ['', [Validators.required, Validators.minLength(2)]],
@@ -950,17 +1080,48 @@ export class UserListComponent {
     email: ['', [Validators.required, Validators.email]],
     password: ['user@123', [Validators.required, Validators.minLength(6)]],
     occupation: ['Member'],
-    address: ['Jaipur, Rajasthan']
+    address: ['Jaipur, Rajasthan'],
+    shares: [1, [Validators.required, Validators.min(1), Validators.max(20)]]
   });
+  monthlyDepositPerShare = MONTHLY_DEPOSIT;
 
   filteredUsers$: Observable<UserSummary[]> = combineLatest([
-    this.userService.getUserSummaries$(),
-    // Observables derived from signal values
-    new Observable<string>(observer => {
-      observer.next(this.searchQuery());
-    })
+    this.userService.getUsers$(),
+    this.loanService.getLoans$()
   ]).pipe(
-    map(([summaries]) => {
+    map(([allUsers, loans]) => {
+      // Exclude admin accounts
+      const members = allUsers.filter(u => u.role !== 'admin');
+
+      const summaries: UserSummary[] = members.map(user => {
+        // Match by Firebase UID (unique); Member ID only for legacy records without a UID
+        const userLoans = loans.filter(l =>
+          user.uid && l.userUid ? l.userUid === user.uid : l.userId.toUpperCase() === user.userId.toUpperCase()
+        );
+        const totalLoansAmount = userLoans.reduce((sum, l) => sum + (l.loanAmount || 0), 0);
+        const paidLoanAmount = userLoans.reduce((sum, l) => sum + (l.paidAmount || 0), 0);
+        const pendingLoanAmount = userLoans.reduce((sum, l) => sum + (l.pendingAmount || 0), 0);
+        const activeLoans = userLoans.filter(l => (l.status || '').toLowerCase() === 'active');
+        const completedLoans = userLoans.filter(l => (l.status || '').toLowerCase() === 'completed');
+
+        let loanStatus: 'No Loan' | 'Loan Active' | 'Loan Completed' = 'No Loan';
+        if (activeLoans.length > 0) {
+          loanStatus = 'Loan Active';
+        } else if (completedLoans.length > 0) {
+          loanStatus = 'Loan Completed';
+        }
+
+        return {
+          user,
+          totalLoansAmount,
+          activeLoansCount: activeLoans.length,
+          completedLoansCount: completedLoans.length,
+          paidLoanAmount,
+          pendingLoanAmount,
+          loanStatus
+        };
+      });
+
       const q = this.searchQuery().toLowerCase().trim();
       const filter = this.selectedFilter();
 
@@ -1013,9 +1174,10 @@ export class UserListComponent {
   openAddAmountModal(user: User): void {
     this.selectedUser.set(user);
     this.addAmountForm.reset({
-      amount: 5000,
+      amount: depositFor(user),
       description: 'Monthly savings contribution',
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      lateFee: false
     });
     this.isAddAmountModalOpen.set(true);
   }
@@ -1029,19 +1191,20 @@ export class UserListComponent {
     this.addAmountForm.patchValue({ amount: amt });
   }
 
-  submitAddAmount(): void {
+  async submitAddAmount(): Promise<void> {
     if (this.addAmountForm.invalid || !this.selectedUser()) return;
 
     this.isSubmitting.set(true);
     const val = this.addAmountForm.value;
     const user = this.selectedUser()!;
 
-    setTimeout(() => {
-      const res = this.userService.addAmount(
+    try {
+      const res = await this.userService.addAmount(
         user.userId,
         Number(val.amount),
         val.description,
-        val.date
+        val.date,
+        !!val.lateFee
       );
 
       this.isSubmitting.set(false);
@@ -1052,7 +1215,10 @@ export class UserListComponent {
       } else {
         this.toast.error(res.message, 'Operation Failed');
       }
-    }, 300);
+    } catch (err: any) {
+      this.isSubmitting.set(false);
+      this.toast.error(err.message || 'Operation failed', 'Error');
+    }
   }
 
   // --- Add User Modal ---
@@ -1064,7 +1230,8 @@ export class UserListComponent {
       email: '',
       password: 'user@123',
       occupation: 'Member',
-      address: 'Jaipur, Rajasthan'
+      address: 'Jaipur, Rajasthan',
+      shares: 1
     });
     this.isAddUserModalOpen.set(true);
   }
@@ -1073,17 +1240,47 @@ export class UserListComponent {
     this.isAddUserModalOpen.set(false);
   }
 
-  submitRegisterUser(): void {
-    if (this.registerUserForm.invalid) return;
+  // --- Bulk Add ---
+  bulkOpen = signal<boolean>(false);
+  bulkProgress = signal<string>('');
 
+  async bulkAdd(text: string): Promise<void> {
+    const rows = text.split('\n').map(l => l.split(',').map(s => s.trim())).filter(r => r[0] && r[1]);
+    if (!rows.length || this.isSubmitting()) return;
+    this.isSubmitting.set(true);
+    const failed: string[] = [];
+    // Sequential: each registration takes the next SOCITY id from the counter transaction
+    for (const [i, [name, email, shares]] of rows.entries()) {
+      this.bulkProgress.set(`Adding ${i + 1}/${rows.length}...`);
+      const res = await this.userService.registerUser({ name, email, mobile: '', password: '123456', shares: Number(shares) || 1 }, true);
+      if (!res.success) failed.push(`${name}: ${res.message}`);
+    }
+    this.isSubmitting.set(false);
+    if (failed.length) {
+      console.warn('Bulk add failures:\n' + failed.join('\n'));
+      this.toast.error(`${failed.length} failed (see console): ${failed.slice(0, 3).join('; ')}`, 'Bulk Add');
+    }
+    this.toast.success(`${rows.length - failed.length} of ${rows.length} members added.`, 'Bulk Add');
+  }
+
+  async submitRegisterUser(): Promise<void> {
+    if (this.registerUserForm.invalid || this.isSubmitting()) return;
+
+    this.isSubmitting.set(true);
     const val = this.registerUserForm.value;
-    const res = this.userService.registerUser(val);
 
-    if (res.success) {
-      this.toast.success(`Registered new member ${res.user?.name} (${res.user?.userId})!`, 'Member Registered');
-      this.closeAddUserModal();
-    } else {
-      this.toast.error(res.message, 'Registration Failed');
+    try {
+      const res = await this.userService.registerUser(val, true);
+      if (res.success) {
+        this.toast.success(`Registered new member ${res.user?.name} (${res.user?.userId})!`, 'Member Registered');
+        this.closeAddUserModal();
+      } else {
+        this.toast.error(res.message, 'Registration Failed');
+      }
+    } catch (err: any) {
+      this.toast.error(err.message || 'Registration failed', 'Error');
+    } finally {
+      this.isSubmitting.set(false);
     }
   }
 }

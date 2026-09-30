@@ -1,16 +1,19 @@
 export interface User {
-  id: number;
+  uid?: string; // Firebase Auth UID
   userId: string; // e.g. "SOCITY0001"
   name: string;
   mobile: string;
   email: string;
   password?: string;
-  totalAmount: number; // Society balance / savings / contributions
+  totalAmount: number; // Society balance / contributions
   role?: 'user' | 'admin';
-  createdAt: string; // "YYYY-MM-DD"
-  status?: 'Active' | 'Inactive';
+  status: 'active' | 'inactive' | 'Active' | 'Inactive';
+  createdAt: any; // Timestamp or string (ISO)
+  updatedAt?: any;
   address?: string;
   occupation?: string;
+  shares?: number; // society shares held; monthly deposit = ₹500 × shares
+  id?: number | string; // Compatibility alias
 }
 
 export interface UserSummary {

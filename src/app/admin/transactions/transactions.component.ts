@@ -37,28 +37,35 @@ import { Observable, combineLatest, map } from 'rxjs';
         </div>
 
         <div class="filter-row">
-          <!-- Type Filter -->
+          <!-- Type Filter: Credit, Loan, Payment -->
           <div class="filter-pills">
             <button
               class="filter-pill"
               [class.active]="selectedType() === 'ALL'"
               (click)="selectedType.set('ALL')"
             >
-              All Types
+              All Transactions
             </button>
             <button
               class="filter-pill"
               [class.active]="selectedType() === 'credit'"
               (click)="selectedType.set('credit')"
             >
-              Credits (+)
+              Credit
             </button>
             <button
               class="filter-pill"
-              [class.active]="selectedType() === 'debit'"
-              (click)="selectedType.set('debit')"
+              [class.active]="selectedType() === 'loan'"
+              (click)="selectedType.set('loan')"
             >
-              Debits (-)
+              Loan
+            </button>
+            <button
+              class="filter-pill"
+              [class.active]="selectedType() === 'payment'"
+              (click)="selectedType.set('payment')"
+            >
+              Payment
             </button>
           </div>
 
@@ -231,7 +238,7 @@ export class AdminTransactionsComponent {
   private txnService = inject(TransactionService);
 
   searchQuery = signal<string>('');
-  selectedType = signal<'ALL' | 'credit' | 'debit'>('ALL');
+  selectedType = signal<'ALL' | 'credit' | 'loan' | 'payment'>('ALL');
   selectedCategory = signal<string>('ALL');
 
   filteredTxns$: Observable<Transaction[]> = this.txnService.getTransactions$().pipe(
@@ -242,15 +249,24 @@ export class AdminTransactionsComponent {
 
       return txns.filter(t => {
         const matchesQ = !q ||
-          t.transactionId.toLowerCase().includes(q) ||
-          t.userId.toLowerCase().includes(q) ||
+          (t.transactionId && t.transactionId.toLowerCase().includes(q)) ||
+          (t.userId && t.userId.toLowerCase().includes(q)) ||
           (t.userName && t.userName.toLowerCase().includes(q)) ||
-          t.description.toLowerCase().includes(q) ||
+          (t.description && t.description.toLowerCase().includes(q)) ||
           (t.referenceId && t.referenceId.toLowerCase().includes(q));
 
         if (!matchesQ) return false;
 
-        if (type !== 'ALL' && t.type !== type) return false;
+        if (type !== 'ALL') {
+          if (type === 'loan') {
+            if (t.type !== 'loan' && t.category !== 'loan_disbursement') return false;
+          } else if (type === 'payment') {
+            if (t.type !== 'payment' && t.category !== 'emi_payment' && t.type !== 'debit') return false;
+          } else if (type === 'credit') {
+            if (t.type !== 'credit') return false;
+          }
+        }
+
         if (cat !== 'ALL' && t.category !== cat) return false;
 
         return true;

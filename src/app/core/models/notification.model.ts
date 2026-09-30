@@ -1,13 +1,15 @@
 export interface AppNotification {
-  id: number;
-  type: 'taken_loan' | 'installment_paid' | 'loan_completed' | 'admin_credit' | 'system';
+  id?: string | number;
+  type: 'taken_loan' | 'installment_paid' | 'loan_completed' | 'credit' | 'system' | string;
   title: string;
   message: string;
-  userId: string;
+  userId: string; // "SOCITY0001"
+  userUid?: string; // Firebase Auth UID
   userName?: string;
   loanId?: string;
   amount?: number;
   isRead: boolean;
-  createdAt: string; // YYYY-MM-DD
+  createdAt: any; // Timestamp or string
   link?: string;
+  paymentDocId?: string; // for 'payment_request' notifications
 }

@@ -106,7 +106,7 @@ import { AppNotification } from '../../core/models/notification.model';
           <div class="admin-profile-chip">
             <div class="admin-avatar">A</div>
             <div class="admin-info">
-              <span class="admin-name">{{ currentUser?.name || 'Admin' }}</span>
+              <span class="admin-name">{{ (currentUser$ | async)?.name || 'Admin' }}</span>
               <span class="admin-role">Chief Administrator</span>
             </div>
           </div>
@@ -174,7 +174,7 @@ import { AppNotification } from '../../core/models/notification.model';
             <div class="topbar-user">
               <div class="user-avatar-sm">A</div>
               <div class="user-meta">
-                <span class="meta-name">{{ currentUser?.name || 'Sunil Nirwan' }}</span>
+                <span class="meta-name">{{ (currentUser$ | async)?.name || 'Sunil Nirwan' }}</span>
                 <span class="meta-role">Admin</span>
               </div>
             </div>
@@ -638,7 +638,7 @@ export class AdminLayoutComponent {
   isMobileOpen = signal<boolean>(false);
   isNotifDropdownOpen = signal<boolean>(false);
 
-  currentUser = this.authService.getCurrentUser();
+  currentUser$ = this.authService.getCurrentUser$();
   unreadCount$ = this.notifService.getUnreadCount$();
   notifications$ = this.notifService.getNotifications$();
 
@@ -659,7 +659,9 @@ export class AdminLayoutComponent {
   }
 
   openNotif(notif: AppNotification): void {
-    this.notifService.markAsRead(notif.id);
+    if (notif.id) {
+      this.notifService.markAsRead(notif.id);
+    }
     this.isNotifDropdownOpen.set(false);
     if (notif.link) {
       this.router.navigateByUrl(notif.link);
