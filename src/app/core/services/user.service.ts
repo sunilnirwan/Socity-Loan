@@ -462,6 +462,52 @@ export class UserService {
   }
 
   /**
+   * Changes the amount of an existing credit transaction (0 deletes it),
+   * shifting the member balance and society deposits by the difference.
+   */
+  async editCreditAmount(
+    txn: { id?: string | number; userId: string; amount: number },
+    newAmount: number
+  ): Promise<{ success: boolean; message: string }> {
+    const delta = newAmount - txn.amount;
+    if (newAmount < 0 || !txn.id) return { success: false, message: 'Invalid amount.' };
+    if (delta === 0) return { success: true, message: 'No change.' };
+
+    const user = this.getUserById(txn.userId);
+    const targetUid = user?.uid || user?.userId;
+    if (!targetUid) return { success: false, message: 'User not found in society database.' };
+
+    const userRef = doc(firestoreDb, 'users', targetUid);
+    const txnRef = doc(firestoreDb, 'transactions', String(txn.id));
+
+    try {
+      let finalBalance = 0;
+      await runTransaction(firestoreDb, async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw new Error('User document does not exist in Firestore.');
+
+        const current = userDoc.data()['totalAmount'];
+        finalBalance = (typeof current === 'number' ? current : 0) + delta;
+
+        transaction.update(userRef, { totalAmount: finalBalance, updatedAt: serverTimestamp() });
+        transaction.set(doc(firestoreDb, 'counters', 'society'), { totalDeposits: increment(delta) }, { merge: true });
+        if (newAmount === 0) transaction.delete(txnRef);
+        else transaction.update(txnRef, { amount: newAmount, balanceAfter: finalBalance, updatedAt: serverTimestamp() });
+      });
+
+      return {
+        success: true,
+        message: newAmount === 0
+          ? `Entry removed for ${user!.name}.`
+          : `Amount changed to ₹${newAmount.toLocaleString('en-IN')} for ${user!.name}.`
+      };
+    } catch (err: any) {
+      console.error('Failed to edit credit amount:', err);
+      return { success: false, message: err.message || 'Failed to update amount in Firestore.' };
+    }
+  }
+
+  /**
    * Combines user data with loan statistics for the Admin User Table.
    */
   getUserSummaries$(loans$: Observable<Loan[]>): Observable<UserSummary[]> {

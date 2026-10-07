@@ -1,17 +1,16 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
+import { UserService } from '../../core/services/user.service';
+import { ToastService } from '../../core/services/toast.service';
 import { Transaction } from '../../core/models/transaction.model';
 import { InrCurrencyPipe } from '../../shared/pipes/inr-currency.pipe';
-import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { Observable, combineLatest, map } from 'rxjs';
 
 @Component({
   selector: 'app-admin-transactions',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, InrCurrencyPipe, EmptyStateComponent],
+  imports: [CommonModule, InrCurrencyPipe],
   template: `
     <div class="page-container">
       <!-- Header -->
@@ -22,121 +21,73 @@ import { Observable, combineLatest, map } from 'rxjs';
         </div>
       </div>
 
-      <!-- Toolbar -->
-      <div class="toolbar-card">
-        <div class="search-box">
-          <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+      <!-- Monthly Installments: click a cell, type amount, Enter to credit -->
+      <div class="content-card">
+        <div class="kist-head">
+          <h3 class="kist-title">Monthly Installments</h3>
           <input
-            type="text"
-            class="search-input"
-            placeholder="Search by Txn ID, User ID, Member Name, or Description..."
-            [ngModel]="searchQuery()"
-            (ngModelChange)="searchQuery.set($event)"
+            #searchBox
+            type="search"
+            class="kist-search"
+            placeholder="Search member name or ID..."
+            (input)="search.set(searchBox.value)"
           />
-          <button *ngIf="searchQuery()" class="btn-clear" (click)="searchQuery.set('')">✕</button>
-        </div>
-
-        <div class="filter-row">
-          <!-- Type Filter: Credit, Loan, Payment -->
-          <div class="filter-pills">
-            <button
-              class="filter-pill"
-              [class.active]="selectedType() === 'ALL'"
-              (click)="selectedType.set('ALL')"
-            >
-              All Transactions
-            </button>
-            <button
-              class="filter-pill"
-              [class.active]="selectedType() === 'credit'"
-              (click)="selectedType.set('credit')"
-            >
-              Credit
-            </button>
-            <button
-              class="filter-pill"
-              [class.active]="selectedType() === 'loan'"
-              (click)="selectedType.set('loan')"
-            >
-              Loan
-            </button>
-            <button
-              class="filter-pill"
-              [class.active]="selectedType() === 'payment'"
-              (click)="selectedType.set('payment')"
-            >
-              Payment
-            </button>
-          </div>
-
-          <!-- Category Filter -->
-          <div class="category-select-wrap">
-            <label class="cat-label">Category:</label>
-            <select
-              class="cat-select"
-              [ngModel]="selectedCategory()"
-              (ngModelChange)="selectedCategory.set($event)"
-            >
-              <option value="ALL">All Categories</option>
-              <option value="contribution">Member Contribution</option>
-              <option value="loan_disbursement">Loan Disbursement</option>
-              <option value="emi_payment">EMI Payment</option>
-              <option value="admin_topup">Admin Top-up</option>
-            </select>
+          <div class="year-nav">
+            <button class="filter-pill" (click)="year.set(year() - 1)">‹</button>
+            <b>{{ year() }}</b>
+            <button class="filter-pill" (click)="year.set(year() + 1)">›</button>
           </div>
         </div>
-      </div>
-
-      <!-- Table View -->
-      <div class="content-card" *ngIf="filteredTxns$ | async as txns">
-        <div class="table-responsive" *ngIf="txns.length > 0">
+        <div class="table-responsive">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Txn ID</th>
-                <th>Date</th>
                 <th>Member</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>Reference</th>
-                <th>Type</th>
-                <th class="text-right">Amount</th>
+                <th *ngFor="let mo of months" class="text-right">{{ mo }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let t of txns">
-                <td><span class="code-badge">{{ t.transactionId }}</span></td>
-                <td><span class="date-cell">{{ t.date }}</span></td>
+              <tr *ngFor="let row of visibleRows()">
                 <td>
                   <div class="member-cell">
-                    <span class="m-name">{{ t.userName }}</span>
-                    <span class="m-id">{{ t.userId }}</span>
+                    <span class="m-name">{{ row.user.name }}</span>
+                    <span class="m-id">{{ row.user.userId }}</span>
                   </div>
                 </td>
-                <td><span class="cat-pill">{{ t.category }}</span></td>
-                <td><span class="desc-text">{{ t.description }}</span></td>
-                <td><span class="ref-badge">{{ t.referenceId || '-' }}</span></td>
-                <td>
-                  <span class="badge" [ngClass]="t.type === 'credit' ? 'badge-success' : 'badge-danger'">
-                    {{ t.type }}
-                  </span>
-                </td>
-                <td class="text-right font-bold" [ngClass]="t.type === 'credit' ? 'text-success' : 'text-danger'">
-                  {{ t.type === 'credit' ? '+' : '-' }}{{ t.amount | inrCurrency }}
+                <td *ngFor="let cell of row.months; let m = index" class="text-right kist-cell" (click)="editing.set(row.user.userId + '|' + m)">
+                  <input
+                    *ngIf="editing() === row.user.userId + '|' + m; else showAmt"
+                    #kistInput
+                    type="number"
+                    min="0"
+                    class="kist-input"
+                    placeholder="Amount"
+                    [value]="cell.total || ''"
+                    (blur)="saveKist(row.user.userId, m, cell, kistInput.value)"
+                    (keydown.enter)="kistInput.blur()"
+                    (keydown.escape)="kistInput.value = ''; kistInput.blur()"
+                  />
+                  <ng-template #showAmt>
+                    <span [ngClass]="cell.total ? 'text-success font-bold' : 'kist-empty'">{{ cell.total ? (cell.total | inrCurrency) : '—' }}</span>
+                  </ng-template>
                 </td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr class="kist-total">
+                <td>Total</td>
+                <td *ngFor="let total of monthTotals()" class="text-right">{{ total ? (total | inrCurrency) : '—' }}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
-
-        <app-empty-state
-          *ngIf="txns.length === 0"
-          title="No transactions found"
-          description="No ledger records matched your current query or category filter."
-          actionText="Reset Filters"
-          (action)="resetFilters()"
-        ></app-empty-state>
       </div>
+
+      <!-- Toolbar -->
+      
+
+      <!-- Table View -->
+     
     </div>
   `,
   styles: [`
@@ -229,6 +180,17 @@ import { Observable, combineLatest, map } from 'rxjs';
     .text-danger { color: #DC2626 !important; }
     .text-right { text-align: right; }
 
+    .kist-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
+    .kist-title { margin: 0; font-size: 1rem; font-weight: 800; color: #172033; }
+    .kist-search { flex: 1; max-width: 320px; height: 36px; padding: 4px 12px; border-radius: 8px; border: 1.5px solid #CBD5E1; font-size: 0.85rem; outline: none; }
+    .kist-search:focus { border-color: #3155C8; }
+    .year-nav { display: flex; align-items: center; gap: 8px; }
+    .kist-cell { cursor: pointer; white-space: nowrap; }
+    .kist-cell:hover { background: #EEF2FF; }
+    .kist-empty { color: #CBD5E1; }
+    .kist-total td { background: #F8FAFC; font-weight: 800; color: #172033; border-top: 2px solid #E2E8F0; white-space: nowrap; }
+    .kist-input { width: 90px; height: 32px; padding: 4px 8px; border: 1.5px solid #3155C8; border-radius: 6px; text-align: right; outline: none; }
+
     .badge { padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
     .badge-success { background: #DCFCE7; color: #15803D; }
     .badge-danger { background: #FEE2E2; color: #DC2626; }
@@ -236,47 +198,81 @@ import { Observable, combineLatest, map } from 'rxjs';
 })
 export class AdminTransactionsComponent {
   private txnService = inject(TransactionService);
+  private userService = inject(UserService);
+  private toast = inject(ToastService);
 
-  searchQuery = signal<string>('');
-  selectedType = signal<'ALL' | 'credit' | 'loan' | 'payment'>('ALL');
-  selectedCategory = signal<string>('ALL');
+  readonly months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  year = signal(new Date().getFullYear());
+  editing = signal<string | null>(null); // "userId|monthIndex"
 
-  filteredTxns$: Observable<Transaction[]> = this.txnService.getTransactions$().pipe(
-    map(txns => {
-      const q = this.searchQuery().toLowerCase().trim();
-      const type = this.selectedType();
-      const cat = this.selectedCategory();
+  @ViewChild('kistInput') set focusKistInput(el: ElementRef<HTMLInputElement> | undefined) {
+    el?.nativeElement.focus();
+    el?.nativeElement.select();
+  }
 
-      return txns.filter(t => {
-        const matchesQ = !q ||
-          (t.transactionId && t.transactionId.toLowerCase().includes(q)) ||
-          (t.userId && t.userId.toLowerCase().includes(q)) ||
-          (t.userName && t.userName.toLowerCase().includes(q)) ||
-          (t.description && t.description.toLowerCase().includes(q)) ||
-          (t.referenceId && t.referenceId.toLowerCase().includes(q));
+  private allTxns = toSignal(this.txnService.getTransactions$(), { initialValue: [] });
+  private users = toSignal(this.userService.getUsers$(), { initialValue: [] });
 
-        if (!matchesQ) return false;
+  // Credit transactions per member per month for the selected year
+  kistGrid = computed(() => {
+    const y = String(this.year());
+    const byCell = new Map<string, Transaction[]>();
+    for (const t of this.allTxns()) {
+      if (t.type !== 'credit' || !t.date?.startsWith(y)) continue;
+      const key = `${t.userId}|${Number(t.date.slice(5, 7)) - 1}`;
+      byCell.set(key, [...(byCell.get(key) || []), t]);
+    }
+    return this.users()
+      .filter(u => u.role !== 'admin')
+      .map(u => ({
+        user: u,
+        months: this.months.map((_, m) => {
+          const txns = byCell.get(`${u.userId}|${m}`) || [];
+          return { total: txns.reduce((s, t) => s + t.amount, 0), txns };
+        })
+      }));
+  });
 
-        if (type !== 'ALL') {
-          if (type === 'loan') {
-            if (t.type !== 'loan' && t.category !== 'loan_disbursement') return false;
-          } else if (type === 'payment') {
-            if (t.type !== 'payment' && t.category !== 'emi_payment' && t.type !== 'debit') return false;
-          } else if (type === 'credit') {
-            if (t.type !== 'credit') return false;
-          }
-        }
+  search = signal('');
 
-        if (cat !== 'ALL' && t.category !== cat) return false;
+  visibleRows = computed(() => {
+    const q = this.search().toLowerCase().trim();
+    return q
+      ? this.kistGrid().filter(r => r.user.name?.toLowerCase().includes(q) || r.user.userId.toLowerCase().includes(q))
+      : this.kistGrid();
+  });
 
-        return true;
-      });
-    })
+  monthTotals = computed(() =>
+    this.months.map((_, m) => this.visibleRows().reduce((sum, row) => sum + row.months[m].total, 0))
   );
 
-  resetFilters(): void {
-    this.searchQuery.set('');
-    this.selectedType.set('ALL');
-    this.selectedCategory.set('ALL');
+  // Typed value becomes the month's total: adds a new entry if the month is empty, otherwise edits the latest entry
+  async saveKist(userId: string, m: number, cell: { total: number; txns: Transaction[] }, value: string): Promise<void> {
+    this.editing.set(null);
+    if (value.trim() === '') return;
+    const target = Number(value);
+    if (!(target >= 0) || target === cell.total) return;
+
+    const y = this.year();
+    if (cell.txns.length === 0) {
+      if (target === 0) return;
+      const now = new Date();
+      const date = now.getFullYear() === y && now.getMonth() === m
+        ? now.toISOString().split('T')[0]
+        : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      const res = await this.userService.addAmount(userId, target, `Monthly installment - ${this.months[m]} ${y}`, date);
+      if (!res.success) this.toast.error(res.message, 'Failed');
+      return;
+    }
+
+    // allTxns is sorted by date desc, so txns[0] is the latest entry of the month
+    const latest = cell.txns[0];
+    const newAmount = latest.amount + (target - cell.total);
+    if (newAmount < 0) {
+      this.toast.error(`This month has ${cell.txns.length} entries; edit them from the ledger to go below ${cell.total - latest.amount}.`, 'Failed');
+      return;
+    }
+    const res = await this.userService.editCreditAmount(latest, newAmount);
+    if (!res.success) this.toast.error(res.message, 'Failed');
   }
 }

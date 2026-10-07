@@ -697,7 +697,7 @@ import { Observable, combineLatest, map, firstValueFrom } from 'rxjs';
       white-space: nowrap;
     }
     .user-table td {
-      padding: 14px 16px;
+      padding: 6px 10px;
       border-bottom: 1px solid #F1F5F9;
       color: #1E293B;
       vertical-align: middle;
